@@ -1,0 +1,86 @@
+# ═══════════════════════════════════════════════════════════════════
+# docker-compose.override.yml — Your Personal Project Services
+#
+# Copy this file to docker-compose.override.yml and customize:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# This file is gitignored and auto-merged by Docker Compose.
+#
+# Note: `!override` replaces the inherited ports/volumes/environment
+# lists instead of merging (requires Docker Compose v2.24+).
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+  # ─────────────────────────────────────────────────────────────
+  # Example: my-project — http://localhost:3001
+  # ─────────────────────────────────────────────────────────────
+  my-project:
+    extends:
+      file: docker-compose.yml
+      service: opencode-docker
+    container_name: opencode-my-project
+    ports:
+      !override
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/"]
+    environment:
+      !override
+      - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
+      - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
+      - OPENCODE_PORT=3001
+    volumes:
+      !override
+      - ${REPOS_PATH:-~/repos}/my-project:/workspace
+      - opencode-data-my-project:/root/.local/share/opencode
+      - opencode-memory-my-project:/root/.config/opencode/memory
+      - ${HOME}/.config/opencode/commands:/root/.config/opencode/commands:ro
+      - ${HOME}/.config/opencode/skills:/root/.config/opencode/skills:ro
+      - ${HOME}/.config/opencode/oh-my-opencode-slim.json:/root/.config/opencode/oh-my-opencode-slim.json:ro
+      - ${HOME}/.agents/skills:/root/.agents/skills:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${HOME}/.gitconfig:/root/.gitconfig:ro
+      - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
+
+  # ─────────────────────────────────────────────────────────────
+  # Example: another-project — http://localhost:3002
+  # ─────────────────────────────────────────────────────────────
+  # another-project:
+  #   extends:
+  #     file: docker-compose.yml
+  #     service: opencode-docker
+  #   container_name: opencode-another-project
+  #   ports:
+  #     !override
+  #     - "3002:3002"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3002/"]
+  #   environment:
+  #     !override
+  #     - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
+  #     - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
+  #     - OPENCODE_PORT=3002
+  #   volumes:
+  #     !override
+  #     - ${REPOS_PATH:-~/repos}/another-project:/workspace
+  #     - opencode-data-another:/root/.local/share/opencode
+  #     - opencode-memory-another:/root/.config/opencode/memory
+  #     - ${HOME}/.config/opencode/commands:/root/.config/opencode/commands:ro
+  #     - ${HOME}/.config/opencode/skills:/root/.config/opencode/skills:ro
+  #     - ${HOME}/.config/opencode/oh-my-opencode-slim.json:/root/.config/opencode/oh-my-opencode-slim.json:ro
+  #     - ${HOME}/.agents/skills:/root/.agents/skills:ro
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - ${HOME}/.ssh:/root/.ssh:ro
+  #     - ${HOME}/.gitconfig:/root/.gitconfig:ro
+  #     - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
+
+volumes:
+  opencode-data-my-project:
+    name: opencode-data-my-project
+  opencode-memory-my-project:
+    name: opencode-memory-my-project
+  # opencode-data-another:
+  #   name: opencode-data-another
+  # opencode-memory-another:
+  #   name: opencode-memory-another

@@ -4,6 +4,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPOSE="docker compose -f ${SCRIPT_DIR}/docker-compose.yml"
 
+# Include override file if it exists
+if [ -f "${SCRIPT_DIR}/docker-compose.override.yml" ]; then
+    COMPOSE="${COMPOSE} -f ${SCRIPT_DIR}/docker-compose.override.yml"
+fi
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
@@ -19,19 +24,17 @@ usage() {
     echo "  logs [svc]        Show logs (follow)"
     echo "  shell <svc>       Open a shell in a service"
     echo "  rebuild [svc...]  Force rebuild and start"
+    echo "  down              Stop and remove all containers"
     echo "  status            Show all services"
     echo "  urls              Show all running URLs"
     echo ""
-    echo "Services:"
-    echo "  mercury           Mercury         → http://localhost:3001"
-    echo "  arma-reforger     ArmaReforger    → http://localhost:3002"
+    echo "Services are defined in docker-compose.yml and docker-compose.override.yml"
     echo ""
     echo "Examples:"
     echo "  $0 start                   # Start all repos"
-    echo "  $0 start mercury           # Start only Mercury"
-    echo "  $0 logs mercury            # Follow Mercury logs"
-    echo "  $0 shell mercury           # Bash into Mercury container"
-    echo "  $0 stop arma-reforger      # Stop only ArmaReforger"
+    echo "  $0 start opencode-docker   # Start only this repo"
+    echo "  $0 logs opencode-docker    # Follow logs"
+    echo "  $0 shell opencode-docker   # Bash into container"
     echo ""
 }
 
@@ -62,7 +65,6 @@ case "${1:-help}" in
         shift
         if [ -z "$1" ]; then
             echo "Usage: $0 shell <service>"
-            echo "  e.g.: $0 shell mercury"
             exit 1
         fi
         $COMPOSE exec "$1" bash
@@ -77,8 +79,7 @@ case "${1:-help}" in
         ;;
     urls)
         echo -e "${CYAN}OpenCode Web URLs:${NC}"
-        echo "  Mercury       → http://localhost:3001"
-        echo "  ArmaReforger  → http://localhost:3002"
+        $COMPOSE ps --format "table {{.Name}}\t{{.Ports}}" 2>/dev/null || $COMPOSE ps
         ;;
     down)
         echo -e "${YELLOW}Stopping and removing all...${NC}"

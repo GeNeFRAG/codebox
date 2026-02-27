@@ -1,12 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "rbigenai": {
+    "llm": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "RBI GenAI",
+      "name": "LLM Gateway",
       "options": {
-        "baseURL": "${RBIGENAI_BASE_URL}",
-        "apiKey": "${RBIGENAI_API_KEY}"
+        "baseURL": "http://127.0.0.1:18080",
+        "apiKey": "${LLM_API_KEY}"
       },
       "models": {
         "claude-sonnet-4-6": { "label": "Claude Sonnet 4.6" },
@@ -54,27 +54,27 @@
   "mcp": {
     "github": {
       "type": "local",
-      "enabled": true,
+      "enabled": false,
       "command": [
         "docker", "run", "-i", "--rm",
-        "-v", "/Users/gerhard.froehlich/tls-ca-bundle_3.pem:/certs/zscaler.pem:ro",
-        "-e", "REQUESTS_CA_BUNDLE=/certs/zscaler.pem",
+        "-v", "${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro",
+        "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
         "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
         "-e", "GITHUB_HOST",
         "ghcr.io/github/github-mcp-server"
       ],
       "environment": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_RBI_TOKEN}",
-        "GITHUB_HOST": "https://code.rbi.tech"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_ENTERPRISE_TOKEN}",
+        "GITHUB_HOST": "${GITHUB_ENTERPRISE_URL}"
       }
     },
     "github_personal": {
       "type": "local",
-      "enabled": true,
+      "enabled": false,
       "command": [
         "docker", "run", "-i", "--rm",
-        "-v", "/Users/gerhard.froehlich/tls-ca-bundle_3.pem:/certs/zscaler.pem:ro",
-        "-e", "REQUESTS_CA_BUNDLE=/certs/zscaler.pem",
+        "-v", "${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro",
+        "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
         "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
         "-e", "GITHUB_HOST",
         "ghcr.io/github/github-mcp-server"
@@ -86,7 +86,7 @@
     },
     "mcp-atlassian": {
       "type": "local",
-      "enabled": true,
+      "enabled": false,
       "command": [
         "docker", "run", "--rm", "-i",
         "-e", "CONFLUENCE_URL",
@@ -112,15 +112,15 @@
     },
     "grafana": {
       "type": "local",
-      "enabled": true,
+      "enabled": false,
       "command": [
         "docker", "run", "--rm", "-i",
-        "-v", "/Users/gerhard.froehlich/tls-ca-bundle_3.pem:/certs/zscaler.pem:ro",
+        "-v", "${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro",
         "-e", "GRAFANA_URL",
         "-e", "GRAFANA_API_KEY",
         "mcp/grafana",
         "-t", "stdio",
-        "--tls-ca-file", "/certs/zscaler.pem"
+        "--tls-ca-file", "/certs/ca-bundle.pem"
       ],
       "environment": {
         "GRAFANA_URL": "${GRAFANA_URL}",
@@ -130,7 +130,7 @@
     "memory": {
       "type": "local",
       "command": [
-        "npx", "-y", "@modelcontextprotocol/server-memory@latest"
+        "mcp-server-memory"
       ],
       "environment": {
         "MEMORY_FILE_PATH": "/root/.config/opencode/memory.json"
@@ -139,7 +139,7 @@
     "context7": {
       "type": "local",
       "command": [
-        "npx", "-y", "@upstash/context7-mcp@latest"
+        "context7-mcp"
       ]
     },
     "websearch": {
@@ -149,33 +149,27 @@
     "sequential-thinking": {
       "type": "local",
       "command": [
-        "npx", "-y", "@modelcontextprotocol/server-sequential-thinking@latest"
-      ]
-    },
-    "grep_app": {
-      "type": "local",
-      "command": [
-        "npx", "-y", "@anthropics/grep-app-mcp@latest"
+        "mcp-server-sequential-thinking"
       ]
     },
     "time": {
       "type": "local",
       "command": [
-        "npx", "-y", "mcp-time-server@latest"
+        "mcp-time-server"
       ]
     },
     "playwright": {
       "type": "local",
       "enabled": false,
       "command": [
-        "npx", "-y", "@playwright/mcp@latest"
+        "playwright-mcp"
       ]
     },
     "git": {
       "type": "local",
       "enabled": false,
       "command": [
-        "npx", "-y", "@cyanheads/git-mcp-server@latest"
+        "git-mcp-server"
       ]
     }
   }

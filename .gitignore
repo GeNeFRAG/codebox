@@ -1,1 +1,18 @@
+# Secrets
 .env
+
+# Personal compose overrides
+docker-compose.override.yml
+
+# CA certificates
+*.pem
+ca-bundle.*
+
+# OpenCode runtime
+opencode.json
+auth.json
+opencode.db
+memory.json
+
+# OS
+.DS_Store

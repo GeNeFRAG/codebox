@@ -14,24 +14,24 @@ echo "╚═══════════════════════�
 echo "→ Generating opencode.json from template..."
 
 # Only substitute our known variables (avoids clobbering $schema etc.)
-envsubst '${RBIGENAI_BASE_URL} ${RBIGENAI_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${GITHUB_RBI_TOKEN} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY}' \
+envsubst '${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${CA_CERT_PATH}' \
     < "${TEMPLATE}" > "${CONFIG_FILE}"
 
 echo "  ✓ Config written to ${CONFIG_FILE}"
 
 # ─── Generate auth.json if API key is set ──────────────────────────
 AUTH_FILE="${DATA_DIR}/auth.json"
-if [ -n "${RBIGENAI_API_KEY}" ]; then
+if [ -n "${LLM_API_KEY}" ]; then
     echo "→ Writing auth.json..."
     cat > "${AUTH_FILE}" <<EOF
 {
   "anthropic": {
     "type": "api",
-    "key": "${RBIGENAI_API_KEY}"
+    "key": "${LLM_API_KEY}"
   },
-  "RBIGenAI": {
+  "llm": {
     "type": "api",
-    "key": "${RBIGENAI_API_KEY}"
+    "key": "${LLM_API_KEY}"
   }
 }
 EOF
@@ -72,6 +72,19 @@ fi
 export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0="safe.directory"
 export GIT_CONFIG_VALUE_0="/workspace"
+
+# ─── Start prefill proxy (strips trailing assistant messages) ─────
+echo "→ Starting prefill proxy on 127.0.0.1:18080 → ${LLM_BASE_URL}..."
+UPSTREAM_URL="${LLM_BASE_URL}" PROXY_PORT=18080 \
+    node /opt/opencode/prefill-proxy.mjs &
+PROXY_PID=$!
+sleep 1
+
+if kill -0 "${PROXY_PID}" 2>/dev/null; then
+    echo "  ✓ Prefill proxy running (PID ${PROXY_PID})"
+else
+    echo "  ✗ Prefill proxy failed to start — falling back to direct connection"
+fi
 
 echo ""
 echo "→ Starting opencode web on 0.0.0.0:${OPENCODE_PORT:-3000}..."
