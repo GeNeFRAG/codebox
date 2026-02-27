@@ -1,0 +1,175 @@
+{
+  "_comment": [
+    "oh-my-opencode-slim — Agent preset and fallback configuration",
+    "Copy to ~/.config/opencode/oh-my-opencode-slim.json",
+    "This file is mounted read-only into containers via docker-compose.",
+    "",
+    "Presets define which model, variant, skills, and MCP servers each agent uses.",
+    "Set 'preset' to the name of the active preset (e.g. 'default', 'copilot').",
+    "",
+    "Variants: 'high' (max quality), 'medium' (balanced), 'low' (fast/cheap).",
+    "Skills: ['*'] = all skills, [] = none, or list specific skill names.",
+    "MCPs: list of MCP server names from opencode.json to make available.",
+    "",
+    "Fallback chains activate when the primary model is unavailable or times out.",
+    "Models are tried in order; timeoutMs controls how long to wait before fallback."
+  ],
+
+  "preset": "default",
+
+  "presets": {
+    "default": {
+      "orchestrator": {
+        "model": "llm/claude-opus-4-6",
+        "skills": ["*"],
+        "mcps": ["websearch", "sequential-thinking", "memory", "time"]
+      },
+      "oracle": {
+        "model": "llm/claude-opus-4-6",
+        "variant": "high",
+        "skills": [],
+        "mcps": ["sequential-thinking"]
+      },
+      "librarian": {
+        "model": "llm/claude-sonnet-4-6",
+        "variant": "low",
+        "skills": [],
+        "mcps": ["websearch", "context7"]
+      },
+      "explorer": {
+        "model": "llm/claude-haiku-4-5",
+        "variant": "low",
+        "skills": [],
+        "mcps": []
+      },
+      "designer": {
+        "model": "llm/claude-opus-4-6",
+        "variant": "medium",
+        "skills": ["agent-browser"],
+        "mcps": []
+      },
+      "fixer": {
+        "model": "llm/claude-sonnet-4-6",
+        "variant": "low",
+        "skills": [],
+        "mcps": ["memory"]
+      }
+    },
+
+    "copilot": {
+      "orchestrator": {
+        "model": "github-copilot/grok-code-fast-1",
+        "skills": ["*"],
+        "mcps": ["websearch"]
+      },
+      "oracle": {
+        "model": "github-copilot/grok-code-fast-1",
+        "variant": "high",
+        "skills": [],
+        "mcps": []
+      },
+      "librarian": {
+        "model": "github-copilot/grok-code-fast-1",
+        "variant": "low",
+        "skills": [],
+        "mcps": ["websearch", "context7"]
+      },
+      "explorer": {
+        "model": "github-copilot/grok-code-fast-1",
+        "variant": "low",
+        "skills": [],
+        "mcps": []
+      },
+      "designer": {
+        "model": "github-copilot/grok-code-fast-1",
+        "variant": "medium",
+        "skills": ["agent-browser"],
+        "mcps": []
+      },
+      "fixer": {
+        "model": "github-copilot/grok-code-fast-1",
+        "variant": "low",
+        "skills": [],
+        "mcps": ["memory"]
+      }
+    },
+
+    "budget": {
+      "_comment": "Cost-optimized preset using smaller/cheaper models",
+      "orchestrator": {
+        "model": "llm/claude-sonnet-4-6",
+        "skills": ["*"],
+        "mcps": ["websearch", "memory", "time"]
+      },
+      "oracle": {
+        "model": "llm/claude-sonnet-4-6",
+        "variant": "high",
+        "skills": [],
+        "mcps": ["sequential-thinking"]
+      },
+      "librarian": {
+        "model": "llm/claude-haiku-4-5",
+        "variant": "low",
+        "skills": [],
+        "mcps": ["websearch", "context7"]
+      },
+      "explorer": {
+        "model": "llm/claude-haiku-4-5",
+        "variant": "low",
+        "skills": [],
+        "mcps": []
+      },
+      "designer": {
+        "model": "llm/claude-sonnet-4-6",
+        "variant": "medium",
+        "skills": ["agent-browser"],
+        "mcps": []
+      },
+      "fixer": {
+        "model": "llm/claude-haiku-4-5",
+        "variant": "low",
+        "skills": [],
+        "mcps": ["memory"]
+      }
+    }
+  },
+
+  "fallback": {
+    "enabled": true,
+    "timeoutMs": 15000,
+    "chains": {
+      "orchestrator": [
+        "llm/claude-sonnet-4-6",
+        "llm/claude-sonnet-4-5",
+        "llm/gpt-5",
+        "openrouter/deepseek/deepseek-v3"
+      ],
+      "oracle": [
+        "llm/o3",
+        "llm/claude-sonnet-4-6",
+        "openrouter/deepseek/deepseek-r1",
+        "llm/gpt-5"
+      ],
+      "designer": [
+        "llm/claude-sonnet-4-6",
+        "llm/claude-opus-4-5",
+        "openrouter/meta-llama/llama-4-maverick",
+        "llm/gpt-5"
+      ],
+      "explorer": [
+        "llm/claude-haiku-4-5",
+        "llm/gpt-4.1-mini"
+      ],
+      "librarian": [
+        "llm/claude-sonnet-4-5",
+        "openrouter/meta-llama/llama-4-scout",
+        "llm/gpt-5-mini"
+      ],
+      "fixer": [
+        "llm/claude-sonnet-4-5",
+        "llm/gpt-5-codex",
+        "openrouter/deepseek/deepseek-r1"
+      ]
+    }
+  }
+}

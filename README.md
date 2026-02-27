@@ -47,6 +47,7 @@ open http://localhost:3000
 ├── opencode-web.sh                     # Host-side CLI wrapper
 ├── opencode.json.template              # OpenCode config template (envsubst)
 ├── prefill-proxy.mjs                   # LLM proxy (strips assistant prefill)
+├── oh-my-opencode-slim.json.example    # Agent preset/fallback config template
 ├── ca-bundle.pem                       # CA certificate bundle (gitignored)
 └── .gitignore
 ```
@@ -213,32 +214,128 @@ Only these variables are substituted (to avoid clobbering `$schema` etc.):
 
 To enable a disabled server, set `"enabled": true` in the template or override the generated config.
 
-## Plugin System
+## Plugin: oh-my-opencode-slim
 
-The `opencode.json.template` includes a `"plugin"` field that activates the oh-my-opencode plugin system:
+The `oh-my-opencode-slim` plugin controls which models, skills, MCP servers, and fallback chains each agent role uses.
+
+### Setup
+
+```bash
+# Copy the template to your OpenCode config directory
+cp oh-my-opencode-slim.json.example ~/.config/opencode/oh-my-opencode-slim.json
+```
+
+The file is **mounted read-only** into containers via `docker-compose.yml`. The `@opencode-ai/plugin` package (pre-installed in the image) loads it at startup. It is registered in `opencode.json` as:
 
 ```json
 "plugin": ["oh-my-opencode-slim"]
 ```
 
-The `@opencode-ai/plugin` package is pre-installed in the Docker image. The plugin is configured via `~/.config/opencode/oh-my-opencode-slim.json`, which is mounted read-only into the container at `/root/.config/opencode/oh-my-opencode-slim.json`.
+### Config Structure
 
-The plugin config defines **agent roles**, each with:
-- A **model** selection (can differ per role)
-- **MCP server** assignments (which tools each role can access)
-- **Fallback chains** (alternative models if the primary is unavailable)
+```jsonc
+{
+  // Active preset name
+  "preset": "default",
 
-Roles defined in the default config:
-| Role | Purpose |
-|------|---------|
-| `orchestrator` | Top-level task planning and delegation |
-| `oracle` | Knowledge lookup and Q&A |
-| `librarian` | Documentation and context retrieval |
-| `explorer` | Code exploration and understanding |
-| `designer` | Architecture and design decisions |
-| `fixer` | Targeted code fixes and implementation |
+  // Named presets — switch by changing "preset" above
+  "presets": {
+    "default": { ... },
+    "copilot": { ... },
+    "budget":  { ... }
+  },
 
-To customise agent behaviour, edit `~/.config/opencode/oh-my-opencode-slim.json` on the host — the container will pick up changes on next start.
+  // Model fallback when primary is unavailable or times out
+  "fallback": {
+    "enabled": true,
+    "timeoutMs": 15000,
+    "chains": { ... }
+  }
+}
+```
+
+### Agent Roles
+
+Each preset defines six agent roles:
+
+| Role | Purpose | Default Model | Default Variant |
+|------|---------|---------------|-----------------|
+| `orchestrator` | Top-level planning, delegation, tool use | `llm/claude-opus-4-6` | — |
+| `oracle` | Deep reasoning, architecture decisions | `llm/claude-opus-4-6` | `high` |
+| `librarian` | Docs lookup, library research | `llm/claude-sonnet-4-6` | `low` |
+| `explorer` | Fast codebase search, file discovery | `llm/claude-haiku-4-5` | `low` |
+| `designer` | UI/UX, styling, visual polish | `llm/claude-opus-4-6` | `medium` |
+| `fixer` | Targeted code fixes, implementation | `llm/claude-sonnet-4-6` | `low` |
+
+### Role Configuration Fields
+
+Each role accepts these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `model` | string | Model identifier (`provider/model-id`) |
+| `variant` | `"high"` \| `"medium"` \| `"low"` | Quality/cost trade-off |
+| `skills` | string[] | Skills available: `["*"]` = all, `[]` = none, or named list |
+| `mcps` | string[] | MCP server names from `opencode.json` to enable for this role |
+
+### Presets
+
+The template ships with three presets:
+
+**`default`** — Full quality using Claude models:
+```jsonc
+"orchestrator": { "model": "llm/claude-opus-4-6",   "skills": ["*"],              "mcps": ["websearch", "sequential-thinking", "memory", "time"] },
+"oracle":       { "model": "llm/claude-opus-4-6",   "variant": "high",            "mcps": ["sequential-thinking"] },
+"librarian":    { "model": "llm/claude-sonnet-4-6",  "variant": "low",             "mcps": ["websearch", "context7"] },
+"explorer":     { "model": "llm/claude-haiku-4-5",   "variant": "low",             "mcps": [] },
+"designer":     { "model": "llm/claude-opus-4-6",   "variant": "medium",           "mcps": [], "skills": ["agent-browser"] },
+"fixer":        { "model": "llm/claude-sonnet-4-6",  "variant": "low",             "mcps": ["memory"] }
+```
+
+**`copilot`** — All agents via GitHub Copilot (Grok):
+```jsonc
+// Every role uses: "model": "github-copilot/grok-code-fast-1"
+```
+
+**`budget`** — Cost-optimised using smaller models:
+```jsonc
+"orchestrator": { "model": "llm/claude-sonnet-4-6" },
+"oracle":       { "model": "llm/claude-sonnet-4-6" },
+"librarian":    { "model": "llm/claude-haiku-4-5" },
+"explorer":     { "model": "llm/claude-haiku-4-5" },
+"designer":     { "model": "llm/claude-sonnet-4-6" },
+"fixer":        { "model": "llm/claude-haiku-4-5" }
+```
+
+### Fallback Chains
+
+When a primary model is unavailable or exceeds `timeoutMs` (default 15s), the next model in the chain is tried:
+
+```jsonc
+"fallback": {
+  "enabled": true,
+  "timeoutMs": 15000,
+  "chains": {
+    "orchestrator": ["llm/claude-sonnet-4-6", "llm/claude-sonnet-4-5", "llm/gpt-5", "openrouter/deepseek/deepseek-v3"],
+    "oracle":       ["llm/o3", "llm/claude-sonnet-4-6", "openrouter/deepseek/deepseek-r1", "llm/gpt-5"],
+    "designer":     ["llm/claude-sonnet-4-6", "llm/claude-opus-4-5", "openrouter/meta-llama/llama-4-maverick", "llm/gpt-5"],
+    "explorer":     ["llm/claude-haiku-4-5", "llm/gpt-4.1-mini"],
+    "librarian":    ["llm/claude-sonnet-4-5", "openrouter/meta-llama/llama-4-scout", "llm/gpt-5-mini"],
+    "fixer":        ["llm/claude-sonnet-4-5", "llm/gpt-5-codex", "openrouter/deepseek/deepseek-r1"]
+  }
+}
+```
+
+### Customisation
+
+Edit `~/.config/opencode/oh-my-opencode-slim.json` on the host. Changes take effect on next container start.
+
+Common customisations:
+- **Switch preset**: Change `"preset": "budget"` to use cheaper models
+- **Swap a model**: Replace any model ID (e.g., use GPT-5 for orchestrator)
+- **Add MCP access**: Add `"github"` to a role's `mcps` array
+- **Disable fallback**: Set `"fallback": { "enabled": false }`
+- **Create a custom preset**: Add a new key under `"presets"` and set `"preset"` to its name
 
 ## Multi-Repo Setup
 
