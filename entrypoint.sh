@@ -15,6 +15,24 @@ echo "╚═══════════════════════�
 # ─── Generate opencode.json from template + env vars ───────────────
 echo "→ Generating opencode.json from template..."
 
+# Resolve CA_CERT_PATH to the absolute host path for sibling Docker containers.
+# docker-compose mounts $CA_CERT_PATH → /certs/ca-bundle.pem inside this container,
+# but MCP servers run as sibling containers via the Docker socket, so they need the
+# actual host path. We discover it by inspecting our own container's mounts.
+if [ -f /certs/ca-bundle.pem ] && [ -s /certs/ca-bundle.pem ]; then
+    HOST_CA_PATH=$(docker inspect "$(hostname)" 2>/dev/null \
+        | node -e "const j=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); \
+           const m=j[0]?.Mounts?.find(m=>m.Destination==='/certs/ca-bundle.pem'); \
+           console.log(m?.Source||'')" 2>/dev/null || true)
+    if [ -n "${HOST_CA_PATH}" ]; then
+        export CA_CERT_PATH="${HOST_CA_PATH}"
+    else
+        export CA_CERT_PATH="/dev/null"
+    fi
+else
+    export CA_CERT_PATH="/dev/null"
+fi
+
 # Only substitute our known variables (avoids clobbering $schema etc.)
 envsubst '${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${CA_CERT_PATH}' \
     < "${TEMPLATE}" > "${CONFIG_FILE}"

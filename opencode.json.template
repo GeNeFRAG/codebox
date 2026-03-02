@@ -141,7 +141,7 @@
       "enabled": false,
       "command": [
         "docker", "run", "-i", "--rm",
-        "-v", "${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro",
+        "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
         "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
         "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
         "-e", "GITHUB_HOST",
@@ -157,7 +157,7 @@
       "enabled": false,
       "command": [
         "docker", "run", "-i", "--rm",
-        "-v", "${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro",
+        "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
         "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
         "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
         "-e", "GITHUB_HOST",
@@ -199,7 +199,7 @@
       "enabled": false,
       "command": [
         "docker", "run", "--rm", "-i",
-        "-v", "${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro",
+        "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
         "-e", "GRAFANA_URL",
         "-e", "GRAFANA_API_KEY",
         "mcp/grafana",
