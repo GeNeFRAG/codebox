@@ -15,11 +15,12 @@ ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/custom-ca.crt
 ENV NODE_OPTIONS="--use-openssl-ca"
 
 # Install opencode-ai globally
-RUN npm install -g opencode-ai@1.2.15
+ARG OPENCODE_VERSION=latest
+RUN npm install -g opencode-ai@${OPENCODE_VERSION}
 
 # Install provider SDKs and plugins
 RUN mkdir -p /root/.config/opencode && \
-    echo '{"dependencies":{"@ai-sdk/openai-compatible":"latest","@ai-sdk/groq":"^3.0.24","@opencode-ai/plugin":"1.2.15","@openrouter/ai-sdk-provider":"^2.2.3"}}' \
+    echo '{"dependencies":{"@ai-sdk/openai-compatible":"latest","@ai-sdk/groq":"^3.0.24","@opencode-ai/plugin":"latest","@openrouter/ai-sdk-provider":"^2.2.3"}}' \
     > /root/.config/opencode/package.json && \
     cd /root/.config/opencode && npm install
 
@@ -58,6 +59,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gettext-base \
         unzip \
         ripgrep \
+        cron \
     && rm -rf /var/lib/apt/lists/*
 
 # ─── Docker CLI only (static binary, ~50 MB vs ~250 MB docker.io) ──

@@ -6,8 +6,10 @@ DATA_DIR="/root/.local/share/opencode"
 TEMPLATE="/opt/opencode/opencode.json.template"
 CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 
+OPENCODE_VER=$(opencode --version 2>/dev/null || echo "unknown")
 echo "╔══════════════════════════════════════════╗"
 echo "║       OpenCode Web - Docker Container    ║"
+echo "║       opencode-ai v${OPENCODE_VER}$(printf '%*s' $((22 - ${#OPENCODE_VER})) '')║"
 echo "╚══════════════════════════════════════════╝"
 
 # ─── Generate opencode.json from template + env vars ───────────────
@@ -95,6 +97,29 @@ if kill -0 "${PROXY_PID}" 2>/dev/null; then
 else
     echo "  ✗ Prefill proxy failed to start — falling back to direct connection"
 fi
+
+# ─── Cron-based version check (every 6h) ─────────────────────────
+VERSION_CHECK_SCRIPT="/usr/local/bin/opencode-version-check.sh"
+cat > "${VERSION_CHECK_SCRIPT}" <<'SCRIPT'
+#!/bin/bash
+LATEST=$(npm view opencode-ai version 2>/dev/null || echo "unknown")
+CURRENT=$(opencode --version 2>/dev/null || echo "unknown")
+if [ "$LATEST" != "unknown" ] && [ "$CURRENT" != "unknown" ] && [ "$LATEST" != "$CURRENT" ]; then
+    echo ""
+    echo "  ╭───────────────────────────────────────────────╮"
+    echo "  │  ⬆  opencode-ai update available:             │"
+    echo "  │     ${CURRENT} → ${LATEST}$(printf '%*s' $((30 - ${#CURRENT} - ${#LATEST})) '')│"
+    echo "  │     Run: ./opencode-web.sh update              │"
+    echo "  ╰───────────────────────────────────────────────╯"
+    echo ""
+fi
+SCRIPT
+chmod +x "${VERSION_CHECK_SCRIPT}"
+
+# Install cron job (every 6h) — output goes to container stdout (PID 1)
+echo "0 */6 * * * ${VERSION_CHECK_SCRIPT} > /proc/1/fd/1 2>&1" | crontab -
+cron
+echo "  ✓ Version check cron installed (every 6h)"
 
 echo ""
 echo "→ Starting opencode web on 0.0.0.0:${OPENCODE_PORT:-3000}..."

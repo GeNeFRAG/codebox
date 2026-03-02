@@ -10,6 +10,8 @@ x-opencode-common: &opencode-common
   build:
     context: .
     dockerfile: Dockerfile
+    args:
+      OPENCODE_VERSION: ${OPENCODE_VERSION:-latest}
   restart: unless-stopped
   env_file:
     - .env

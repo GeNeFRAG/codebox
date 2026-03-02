@@ -27,6 +27,8 @@ usage() {
     echo "  down              Stop and remove all containers"
     echo "  status            Show all services"
     echo "  urls              Show all running URLs"
+    echo "  update [svc...]   Rebuild with latest opencode-ai version"
+    echo "  version [svc]     Show current opencode-ai version in container"
     echo ""
     echo "Services are defined in docker-compose.yml and docker-compose.override.yml"
     echo ""
@@ -80,6 +82,25 @@ case "${1:-help}" in
     urls)
         echo -e "${CYAN}OpenCode Web URLs:${NC}"
         $COMPOSE ps --format "table {{.Name}}\t{{.Ports}}" 2>/dev/null || $COMPOSE ps
+        ;;
+    update)
+        shift
+        echo -e "${YELLOW}Pulling latest base image and rebuilding with latest opencode-ai...${NC}"
+        $COMPOSE build --no-cache --pull --build-arg OPENCODE_VERSION=latest "$@"
+        $COMPOSE up -d "$@"
+        echo ""
+        echo -e "${GREEN}✓ Updated. Current versions:${NC}"
+        for svc in $($COMPOSE ps --services 2>/dev/null); do
+            ver=$($COMPOSE exec -T "$svc" opencode --version 2>/dev/null || echo "unknown")
+            echo -e "  ${CYAN}${svc}${NC}: opencode-ai ${ver}"
+        done
+        ;;
+    version)
+        shift
+        for svc in ${@:-$($COMPOSE ps --services 2>/dev/null)}; do
+            ver=$($COMPOSE exec -T "$svc" opencode --version 2>/dev/null || echo "not running")
+            echo -e "  ${CYAN}${svc}${NC}: opencode-ai ${ver}"
+        done
         ;;
     down)
         echo -e "${YELLOW}Stopping and removing all...${NC}"
