@@ -34,7 +34,16 @@ else
 fi
 
 # Only substitute our known variables (avoids clobbering $schema etc.)
-envsubst '${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${CA_CERT_PATH}' \
+# Determine the effective LLM URL based on whether the prefill proxy is enabled.
+# The proxy hasn't started yet, but the URL is deterministic — we'll verify later.
+PREFILL_PROXY_ENABLED="${PREFILL_PROXY:-true}"
+if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
+    export LLM_EFFECTIVE_URL="http://127.0.0.1:18080"
+else
+    export LLM_EFFECTIVE_URL="${LLM_BASE_URL}"
+fi
+
+envsubst '${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${CA_CERT_PATH}' \
     < "${TEMPLATE}" > "${CONFIG_FILE}"
 
 echo "  ✓ Config written to ${CONFIG_FILE}"
@@ -115,16 +124,24 @@ if [ ! -e "${HOME}/${WORKSPACE_NAME}" ]; then
 fi
 
 # ─── Start prefill proxy (strips trailing assistant messages) ─────
-echo "→ Starting prefill proxy on 127.0.0.1:18080 → ${LLM_BASE_URL}..."
-UPSTREAM_URL="${LLM_BASE_URL}" PROXY_PORT=18080 \
-    node /opt/opencode/prefill-proxy.mjs &
-PROXY_PID=$!
-sleep 1
+if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
+    echo "→ Starting prefill proxy on 127.0.0.1:18080 → ${LLM_BASE_URL}..."
+    UPSTREAM_URL="${LLM_BASE_URL}" PROXY_PORT=18080 \
+        node /opt/opencode/prefill-proxy.mjs &
+    PROXY_PID=$!
+    sleep 1
 
-if kill -0 "${PROXY_PID}" 2>/dev/null; then
-    echo "  ✓ Prefill proxy running (PID ${PROXY_PID})"
+    if kill -0 "${PROXY_PID}" 2>/dev/null; then
+        echo "  ✓ Prefill proxy running (PID ${PROXY_PID})"
+    else
+        echo "  ✗ Prefill proxy failed to start — falling back to direct connection"
+        # Re-generate config to point directly at the upstream URL
+        export LLM_EFFECTIVE_URL="${LLM_BASE_URL}"
+        envsubst '${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${CA_CERT_PATH}' \
+            < "${TEMPLATE}" > "${CONFIG_FILE}"
+    fi
 else
-    echo "  ✗ Prefill proxy failed to start — falling back to direct connection"
+    echo "→ Prefill proxy disabled — connecting directly to ${LLM_BASE_URL}"
 fi
 
 # ─── Cron-based auto-update (every 12h) ───────────────────────────

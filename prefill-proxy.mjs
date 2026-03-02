@@ -125,6 +125,35 @@ function summariseRequest(body) {
   return parts.join(" ");
 }
 
+/* ── Upstream connection tracking ───────────────────────────────────── */
+
+/**
+ * Log whether the upstream request reused a pooled socket or opened a new one,
+ * and measure the TCP + TLS handshake time for new connections.
+ */
+function trackUpstreamConnect(proxyReq, id) {
+  proxyReq.on("socket", (socket) => {
+    if (socket._hadConnect) {
+      // Reused keep-alive socket — no handshake cost
+      log.info(`[${id}] Socket reused (keep-alive)`);
+      return;
+    }
+    // Mark so we don't log again on reuse
+    socket._hadConnect = true;
+    const socketStart = performance.now();
+
+    socket.on("connect", () => {
+      const tcpMs = (performance.now() - socketStart).toFixed(1);
+      log.info(`[${id}] TCP connected in ${tcpMs}ms`);
+    });
+
+    socket.on("secureConnect", () => {
+      const tlsMs = (performance.now() - socketStart).toFixed(1);
+      log.info(`[${id}] TLS handshake completed in ${tlsMs}ms`);
+    });
+  });
+}
+
 /* ── Shared upstream handlers ──────────────────────────────────────── */
 
 function handleUpstreamResponse(proxyRes, res, id, startTime) {
@@ -216,6 +245,7 @@ const server = http.createServer((req, res) => {
     proxyReq.on("error", (err) => handleProxyError(err, res, id, startTime));
     res.on("close", () => handleClientDisconnect(proxyReq, id));
 
+    trackUpstreamConnect(proxyReq, id);
     req.pipe(proxyReq);
     return;
   }
@@ -251,6 +281,8 @@ const server = http.createServer((req, res) => {
 
     if (modified) fwdHeaders["content-length"] = rawBody.length;
 
+    log.info(`[${id}] Body: ${(rawBody.length / 1024).toFixed(1)}KB${modified ? " (modified)" : ""}`);
+
     const proxyReq = transport.request(
       targetUrl,
       reqOpts,
@@ -261,7 +293,11 @@ const server = http.createServer((req, res) => {
     proxyReq.on("error", (err) => handleProxyError(err, res, id, startTime));
     res.on("close", () => handleClientDisconnect(proxyReq, id));
 
+    trackUpstreamConnect(proxyReq, id);
     proxyReq.end(rawBody);
+
+    const proxyOverhead = ((performance.now() - startTime) / 1000).toFixed(3);
+    log.info(`[${id}] Forwarded to upstream in ${proxyOverhead}s`);
   });
 });
 

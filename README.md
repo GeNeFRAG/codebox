@@ -53,6 +53,7 @@ Set these three in `.env`:
 | `OPENCODE_EXTRA_ARGS` | Extra arguments passed to `opencode web` |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
+| `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `true`). Set `false` to connect directly to `LLM_BASE_URL`. |
 | `PROXY_LOG_LEVEL` | Prefill proxy verbosity: `debug` / `info` (default) / `warn` / `error` |
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `GITHUB_ENTERPRISE_TOKEN` | GitHub Enterprise PAT |
@@ -240,7 +241,7 @@ When a container starts, `entrypoint.sh` runs these steps:
 6. **Docker socket check** — Verifies `/var/run/docker.sock` for MCP containers
 7. **Git safe.directory** — Exports `GIT_CONFIG_*` env vars to mark `/workspace` as safe
 8. **Workspace symlink** — Symlinks `/workspace` into `$HOME` so the web UI "Open project" dialog can discover it
-9. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080`
+9. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080` (if `PREFILL_PROXY=true`, the default)
 10. **Auto-update cron** — Installs a 12-hourly cron job (update or notify-only, per `OPENCODE_AUTOUPDATE`)
 11. **OpenCode web** — Starts in a restart loop on `0.0.0.0:${OPENCODE_PORT:-3000}` (loop enables auto-update restarts)
 

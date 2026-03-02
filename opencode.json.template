@@ -5,7 +5,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "LLM Gateway",
       "options": {
-        "baseURL": "http://127.0.0.1:18080",
+        "baseURL": "${LLM_EFFECTIVE_URL}",
         "apiKey": "${LLM_API_KEY}"
       },
       "models": {
