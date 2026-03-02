@@ -30,6 +30,7 @@ x-opencode-common: &opencode-common
     # ─── SSH & Git ────────────────────────────────────────────
     - ${HOME}/.ssh:/root/.ssh:ro
     - ${HOME}/.gitconfig:/root/.gitconfig:ro
+    - ${HOME}/.git-credentials:/root/.git-credentials:ro
     # ─── CA certificate (optional, for corporate proxies) ─────
     - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
   healthcheck: &opencode-healthcheck
@@ -72,6 +73,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/.ssh:/root/.ssh:ro
       - ${HOME}/.gitconfig:/root/.gitconfig:ro
+      - ${HOME}/.git-credentials:/root/.git-credentials:ro
       - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
 
 volumes:
