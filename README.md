@@ -95,6 +95,27 @@ A local HTTP proxy that sits between OpenCode and the upstream LLM API:
 
 The `opencode.json.template` routes all LLM traffic through this proxy (`baseURL: http://127.0.0.1:18080`).
 
+### Logging
+
+The proxy logs every request with a short correlation ID (e.g., `[a3f1c2]`) so you can trace a request across all its log lines. Log output includes:
+
+- **Incoming requests** — method, URL, active connection count
+- **Chat completions** — model, message count by role, stream flag, temperature
+- **Prefill stripping** — content preview, remaining message count after stripping
+- **Upstream responses** — status code, time-to-first-byte, total stream duration
+- **Errors** — parse failures, upstream errors, timeouts (with elapsed time)
+- **Client disconnects** — logged when the client aborts mid-stream
+- **Periodic stats** — total requests, active connections, stripped messages, and errors (every 5 min)
+
+Control verbosity with `PROXY_LOG_LEVEL`:
+
+| Level | What you see |
+|-------|-------------|
+| `debug` | Everything — includes request/response headers and forwarding URLs |
+| `info` | Requests, responses, timings, stripping, stats (default) |
+| `warn` | Client disconnects, 4xx upstream responses |
+| `error` | Upstream errors, timeouts, parse failures |
+
 ## Docker Build (`Dockerfile`)
 
 Multi-stage build for minimal image size:
@@ -145,6 +166,7 @@ Multi-stage build for minimal image size:
 | `GRAFANA_URL` | No | Grafana instance URL |
 | `GRAFANA_API_KEY` | No | Grafana API key |
 | `OPENCODE_EXTRA_ARGS` | No | Extra arguments passed to `opencode web` |
+| `PROXY_LOG_LEVEL` | No | Prefill proxy log level: `debug`, `info` (default), `warn`, `error` |
 
 ### Supported Models
 
@@ -450,6 +472,7 @@ docker compose logs opencode-docker
 - Verify `LLM_BASE_URL` and `LLM_API_KEY` in `.env`
 - Check if the prefill proxy started: look for `✓ Prefill proxy running` in logs
 - If behind a corporate proxy, ensure `CA_CERT_PATH` points to a valid PEM file
+- Enable debug logging for full request/response details: set `PROXY_LOG_LEVEL=debug` in `.env`
 
 ### "This model does not support assistant message prefill"
 The prefill proxy should handle this automatically. If it fails to start, check logs for `✗ Prefill proxy failed to start`.
