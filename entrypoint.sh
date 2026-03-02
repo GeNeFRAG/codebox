@@ -98,9 +98,84 @@ else
     echo "  ✗ Prefill proxy failed to start — falling back to direct connection"
 fi
 
-# ─── Cron-based version check (every 6h) ─────────────────────────
-VERSION_CHECK_SCRIPT="/usr/local/bin/opencode-version-check.sh"
-cat > "${VERSION_CHECK_SCRIPT}" <<'SCRIPT'
+# ─── Cron-based auto-update (every 12h) ───────────────────────────
+AUTO_UPDATE_SCRIPT="/usr/local/bin/opencode-auto-update.sh"
+cat > "${AUTO_UPDATE_SCRIPT}" <<'SCRIPT'
+#!/bin/bash
+# Auto-update opencode-ai if a newer version is available.
+# Sessions are persisted on disk — the web UI reconnects after restart.
+set -e
+
+LOG_PREFIX="[opencode-auto-update]"
+LOCKFILE="/tmp/opencode-update.lock"
+
+# Prevent concurrent runs
+exec 9>"${LOCKFILE}"
+if ! flock -n 9; then
+    echo "${LOG_PREFIX} Another update is already running, skipping."
+    exit 0
+fi
+
+LATEST=$(npm view opencode-ai version 2>/dev/null || echo "unknown")
+CURRENT=$(opencode --version 2>/dev/null || echo "unknown")
+
+if [ "$LATEST" = "unknown" ] || [ "$CURRENT" = "unknown" ]; then
+    echo "${LOG_PREFIX} Could not determine versions (current=${CURRENT}, latest=${LATEST}). Skipping."
+    exit 0
+fi
+
+if [ "$LATEST" = "$CURRENT" ]; then
+    echo "${LOG_PREFIX} Already on latest version (${CURRENT}). No update needed."
+    exit 0
+fi
+
+echo ""
+echo "${LOG_PREFIX} ╭───────────────────────────────────────────────╮"
+echo "${LOG_PREFIX} │  ⬆  Updating opencode-ai: ${CURRENT} → ${LATEST}"
+echo "${LOG_PREFIX} ╰───────────────────────────────────────────────╯"
+
+# Install the new version globally (overwrites existing binary in-place)
+if npm install -g "opencode-ai@${LATEST}" --prefer-online 2>&1 | sed "s/^/${LOG_PREFIX}   /"; then
+    NEW_VER=$(opencode --version 2>/dev/null || echo "unknown")
+    echo "${LOG_PREFIX} ✓ Installed opencode-ai ${NEW_VER}"
+else
+    echo "${LOG_PREFIX} ✗ npm install failed — keeping current version ${CURRENT}"
+    exit 1
+fi
+
+# Re-create the symlink (in case the binary path shifted)
+ln -sf /usr/local/lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode
+
+# Restart opencode web — tini is PID 1 and entrypoint runs a restart loop,
+# so killing the opencode process causes the loop to relaunch it automatically.
+OPENCODE_PID=$(pgrep -f "opencode web" | head -1 || true)
+if [ -n "${OPENCODE_PID}" ]; then
+    echo "${LOG_PREFIX} Restarting opencode web (PID ${OPENCODE_PID})..."
+    kill -TERM "${OPENCODE_PID}" 2>/dev/null || true
+    sleep 5
+    if pgrep -f "opencode web" > /dev/null; then
+        echo "${LOG_PREFIX} ✓ opencode web restarted with v${LATEST}"
+    else
+        echo "${LOG_PREFIX} ⟳ Waiting for restart loop to relaunch..."
+    fi
+else
+    echo "${LOG_PREFIX} opencode web not running — update will take effect on next start."
+fi
+
+echo ""
+SCRIPT
+chmod +x "${AUTO_UPDATE_SCRIPT}"
+
+# Install cron job (every 12h) — output goes to container stdout (PID 1)
+AUTOUPDATE_ENABLED="${OPENCODE_AUTOUPDATE:-true}"
+if [ "${AUTOUPDATE_ENABLED}" = "true" ]; then
+    echo "0 */12 * * * ${AUTO_UPDATE_SCRIPT} > /proc/1/fd/1 2>&1" | crontab -
+    cron
+    echo "  ✓ Auto-update cron installed (every 12h)"
+else
+    # Fall back to notification-only
+    VERSION_CHECK_SCRIPT="/usr/local/bin/opencode-version-check.sh"
+    cat > "${VERSION_CHECK_SCRIPT}" <<'VSCRIPT'
 #!/bin/bash
 LATEST=$(npm view opencode-ai version 2>/dev/null || echo "unknown")
 CURRENT=$(opencode --version 2>/dev/null || echo "unknown")
@@ -113,22 +188,29 @@ if [ "$LATEST" != "unknown" ] && [ "$CURRENT" != "unknown" ] && [ "$LATEST" != "
     echo "  ╰───────────────────────────────────────────────╯"
     echo ""
 fi
-SCRIPT
-chmod +x "${VERSION_CHECK_SCRIPT}"
-
-# Install cron job (every 6h) — output goes to container stdout (PID 1)
-echo "0 */6 * * * ${VERSION_CHECK_SCRIPT} > /proc/1/fd/1 2>&1" | crontab -
-cron
-echo "  ✓ Version check cron installed (every 6h)"
+VSCRIPT
+    chmod +x "${VERSION_CHECK_SCRIPT}"
+    echo "0 */12 * * * ${VERSION_CHECK_SCRIPT} > /proc/1/fd/1 2>&1" | crontab -
+    cron
+    echo "  ✓ Version check cron installed (every 12h, notify only)"
+fi
 
 echo ""
 echo "→ Starting opencode web on 0.0.0.0:${OPENCODE_PORT:-3000}..."
 echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
 echo ""
 
-# ─── Start opencode web ──────────────────────────────────────────
+# ─── Start opencode web (restart loop for auto-updates) ──────────
+# tini is PID 1; this loop lets the auto-update cron kill and restart
+# the opencode process without stopping the container.
 cd /workspace
-exec opencode web \
-    --hostname 0.0.0.0 \
-    --port "${OPENCODE_PORT:-3000}" \
-    ${OPENCODE_EXTRA_ARGS:-}
+while true; do
+    opencode web \
+        --hostname 0.0.0.0 \
+        --port "${OPENCODE_PORT:-3000}" \
+        ${OPENCODE_EXTRA_ARGS:-} || true
+    echo ""
+    echo "  ⟳ opencode web exited ($(date)). Restarting in 3s..."
+    echo ""
+    sleep 3
+done

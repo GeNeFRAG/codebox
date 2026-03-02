@@ -60,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         unzip \
         ripgrep \
         cron \
+        tini \
     && rm -rf /var/lib/apt/lists/*
 
 # ─── Docker CLI only (static binary, ~50 MB vs ~250 MB docker.io) ──
@@ -109,4 +110,4 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:${OPENCODE_PORT:-3000}/ || exit 1
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint.sh"]
