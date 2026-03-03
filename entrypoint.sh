@@ -35,10 +35,9 @@ fi
 
 # ─── LLM Gateway health check — fallback model if unreachable ──────
 if [ -n "${LLM_BASE_URL}" ] && [ -n "${OPENCODE_MODEL_FALLBACK}" ]; then
-    HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${LLM_BASE_URL}/health" 2>/dev/null || echo "000")
-    MODELS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${LLM_BASE_URL}/models" 2>/dev/null || echo "000")
-    echo "  → LLM gateway check: /health=${HEALTH_CODE} /models=${MODELS_CODE}"
-    if [[ "${HEALTH_CODE}" =~ ^(2|3) ]] || [[ "${MODELS_CODE}" =~ ^(2|3) ]]; then
+    MODELS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -H "Authorization: Bearer ${LLM_API_KEY}" "${LLM_BASE_URL}/models" 2>/dev/null || echo "000")
+    echo "  → LLM gateway check: /models=${MODELS_CODE}"
+    if [[ "${MODELS_CODE}" =~ ^(2|3) ]]; then
         echo "  ✓ LLM gateway reachable (${LLM_BASE_URL}) — using ${OPENCODE_MODEL}"
     else
         echo "  ⚠ LLM gateway unhealthy (${LLM_BASE_URL}) — falling back to ${OPENCODE_MODEL_FALLBACK}"
