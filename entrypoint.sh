@@ -287,27 +287,14 @@ VSCRIPT
 fi
 
 echo ""
-echo "→ Starting opencode web on 0.0.0.0:${OPENCODE_PORT:-3000}..."
-echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
-echo ""
 
-# ─── Start opencode web (restart loop for auto-updates) ──────────
-# tini is PID 1; this loop lets the auto-update cron kill and restart
-# the opencode process without stopping the container.
-cd /workspace
-while true; do
-    opencode web \
-        --hostname 0.0.0.0 \
-        --port "${OPENCODE_PORT:-3000}" \
-        ${OPENCODE_EXTRA_ARGS:-} || true
-    echo ""
-    echo "  ⟳ opencode web exited ($(date)). Restarting in 3s..."
-    echo ""
+# ─── Mode selection ───────────────────────────────────────────────
+# OPENCODE_MODE=web  (default) — opencode web UI served on OPENCODE_PORT
+# OPENCODE_MODE=tui            — opencode TUI exposed via ttyd on OPENCODE_PORT
+OPENCODE_MODE="${OPENCODE_MODE:-web}"
 
-    # ── Proxy liveness check ───────────────────────────────────────
-    # The prefill proxy is a long-lived background process. If it died
-    # (crash, OOM, etc.) while opencode was running, restart it now so
-    # the next opencode web launch can reach 127.0.0.1:18080.
+# ── Proxy liveness helper (web mode only) ─────────────────────────
+_restart_proxy() {
     if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
         if ! kill -0 "${PROXY_PID:-0}" 2>/dev/null; then
             echo "  ⟳ Prefill proxy not running — restarting..."
@@ -322,6 +309,57 @@ while true; do
             fi
         fi
     fi
+}
 
-    sleep 3
-done
+cd /workspace
+
+if [ "${OPENCODE_MODE}" = "tui" ]; then
+    # ── TUI mode: run opencode (terminal UI) inside ttyd ─────────
+    # ttyd wraps the opencode TUI in a full xterm.js session and
+    # serves it over WebSocket on OPENCODE_PORT — open in any browser.
+    # The prefill proxy is not used in TUI mode (no HTTP API path).
+    echo "→ Starting opencode TUI via ttyd on 0.0.0.0:${OPENCODE_PORT:-3000}..."
+    echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
+    echo ""
+
+    # Restart loop — mirrors web mode so auto-update cron works the same way.
+    while true; do
+        ttyd \
+            --port "${OPENCODE_PORT:-3000}" \
+            --interface 0.0.0.0 \
+            --writable \
+            --cwd /workspace \
+            ${OPENCODE_TUI_ARGS:-} \
+            opencode ${OPENCODE_EXTRA_ARGS:-} || true
+        echo ""
+        echo "  ⟳ ttyd exited ($(date)). Restarting in 3s..."
+        echo ""
+        sleep 3
+    done
+
+else
+    # ── Web mode (default): opencode web UI ───────────────────────
+    echo "→ Starting opencode web on 0.0.0.0:${OPENCODE_PORT:-3000}..."
+    echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
+    echo ""
+
+    # tini is PID 1; this loop lets the auto-update cron kill and restart
+    # the opencode process without stopping the container.
+    while true; do
+        opencode web \
+            --hostname 0.0.0.0 \
+            --port "${OPENCODE_PORT:-3000}" \
+            ${OPENCODE_EXTRA_ARGS:-} || true
+        echo ""
+        echo "  ⟳ opencode web exited ($(date)). Restarting in 3s..."
+        echo ""
+
+        # ── Proxy liveness check ───────────────────────────────────────
+        # The prefill proxy is a long-lived background process. If it died
+        # (crash, OOM, etc.) while opencode was running, restart it now so
+        # the next opencode web launch can reach 127.0.0.1:18080.
+        _restart_proxy
+
+        sleep 3
+    done
+fi

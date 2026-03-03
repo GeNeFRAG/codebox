@@ -71,6 +71,12 @@ RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz" \
     | tar xz --strip-components=1 -C /usr/local/bin docker/docker
 
+# ─── ttyd (web terminal — used when OPENCODE_MODE=tui) ─────────────
+ARG TTYD_VERSION=1.7.7
+RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
+    curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}" \
+    -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
+
 # ─── Bun ───────────────────────────────────────────────────────────
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"

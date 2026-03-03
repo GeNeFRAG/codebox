@@ -14,6 +14,26 @@ open http://localhost:3000
 
 > **Corporate proxy?** Copy your CA bundle to `./ca-bundle.pem` and set `CA_CERT_PATH` in `.env`.
 
+## TUI Mode (terminal UI in the browser)
+
+Set `OPENCODE_MODE=tui` in `.env` to run the full opencode terminal interface instead of the web UI — the same experience you get when you type `opencode` in iTerm, but served in any browser via [ttyd](https://github.com/tsl0922/ttyd).
+
+```bash
+# .env
+OPENCODE_MODE=tui
+```
+
+Then start normally:
+
+```bash
+./opencode-web.sh start
+open http://localhost:3000   # opens a full xterm.js terminal running opencode
+```
+
+Switch back to the web UI at any time by removing the variable or setting `OPENCODE_MODE=web`.
+
+> **Per-service:** You can mix modes across repos — set `OPENCODE_MODE=tui` in the `environment:` block of any service in `docker-compose.override.yml`.
+
 ## CLI (`opencode-web.sh`)
 
 ```bash
@@ -47,10 +67,12 @@ Set these three in `.env`:
 
 | Variable | Description |
 |----------|-------------|
-| `OPENCODE_PORT` | Web UI port (default: `3000`) |
+| `OPENCODE_PORT` | Web UI / TUI port (default: `3000`) |
+| `OPENCODE_MODE` | `web` (default) — browser web UI · `tui` — terminal UI via ttyd |
 | `OPENCODE_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
 | `OPENCODE_AUTOUPDATE` | Enable in-container auto-updates every 12h (default: `true`). Set `false` for notify-only. |
-| `OPENCODE_EXTRA_ARGS` | Extra arguments passed to `opencode web` |
+| `OPENCODE_EXTRA_ARGS` | Extra arguments passed to `opencode web` or `opencode` (TUI mode) |
+| `OPENCODE_TUI_ARGS` | Extra arguments passed to `ttyd` when `OPENCODE_MODE=tui` |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
 | `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `true`). Set `false` to connect directly to `LLM_BASE_URL`. |
@@ -241,9 +263,11 @@ When a container starts, `entrypoint.sh` runs these steps:
 6. **Docker socket check** — Verifies `/var/run/docker.sock` for MCP containers
 7. **Git safe.directory** — Exports `GIT_CONFIG_*` env vars to mark `/workspace` as safe
 8. **Workspace symlink** — Symlinks `/workspace` into `$HOME` so the web UI "Open project" dialog can discover it
-9. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080` (if `PREFILL_PROXY=true`, the default)
+9. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080` (if `PREFILL_PROXY=true` and `OPENCODE_MODE=web`, the default)
 10. **Auto-update cron** — Installs a 12-hourly cron job (update or notify-only, per `OPENCODE_AUTOUPDATE`)
-11. **OpenCode web** — Starts in a restart loop on `0.0.0.0:${OPENCODE_PORT:-3000}` (loop enables auto-update restarts)
+11. **Mode selection** — Reads `OPENCODE_MODE` (default `web`):
+    - `web` — starts `opencode web` in a restart loop on `0.0.0.0:${OPENCODE_PORT:-3000}`
+    - `tui` — starts `ttyd opencode` in a restart loop on the same port; browser opens a full xterm.js terminal
 
 </details>
 
@@ -267,7 +291,7 @@ Multi-stage build for minimal image size:
 
 **Builder stage** — `node:22-bookworm-slim` with build tools. Installs `opencode-ai` (version set by `OPENCODE_VERSION` build arg, default `latest`), provider SDKs (`@ai-sdk/openai-compatible`, `@ai-sdk/groq`, `@openrouter/ai-sdk-provider`), and MCP servers globally.
 
-**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `cron`, `tini` (PID 1), Docker CLI, Bun, and `python3` (required by the cartography skill). Copies `node_modules` from builder and re-creates bin symlinks — MCP servers start instantly with no registry checks.
+**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `cron`, `tini` (PID 1), Docker CLI, Bun, `python3` (required by the cartography skill), and `ttyd` (web terminal for `OPENCODE_MODE=tui`). Copies `node_modules` from builder and re-creates bin symlinks — MCP servers start instantly with no registry checks.
 
 </details>
 
