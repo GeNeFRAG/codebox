@@ -16,159 +16,94 @@
   ],
 
   "preset": "default",
-
   "presets": {
     "default": {
       "orchestrator": {
         "model": "llm/claude-opus-4-6",
-        "skills": ["*"],
-        "mcps": ["websearch", "sequential-thinking", "memory", "time"]
-      },
-      "oracle": {
-        "model": "llm/claude-opus-4-6",
-        "variant": "high",
-        "skills": [],
-        "mcps": ["sequential-thinking"]
-      },
-      "librarian": {
-        "model": "llm/claude-sonnet-4-6",
-        "variant": "low",
-        "skills": [],
-        "mcps": ["websearch", "context7"]
-      },
-      "explorer": {
-        "model": "llm/claude-haiku-4-5",
-        "variant": "low",
-        "skills": [],
-        "mcps": []
-      },
-      "designer": {
-        "model": "llm/claude-opus-4-6",
-        "variant": "medium",
-        "skills": ["agent-browser"],
-        "mcps": []
-      },
-      "fixer": {
-        "model": "llm/claude-sonnet-4-6",
-        "variant": "low",
-        "skills": [],
-        "mcps": ["memory"]
-      }
-    },
-
-    "copilot": {
-      "orchestrator": {
-        "model": "github-copilot/grok-code-fast-1",
-        "skills": ["*"],
-        "mcps": ["websearch"]
-      },
-      "oracle": {
-        "model": "github-copilot/grok-code-fast-1",
-        "variant": "high",
-        "skills": [],
-        "mcps": []
-      },
-      "librarian": {
-        "model": "github-copilot/grok-code-fast-1",
-        "variant": "low",
-        "skills": [],
-        "mcps": ["websearch", "context7"]
-      },
-      "explorer": {
-        "model": "github-copilot/grok-code-fast-1",
-        "variant": "low",
-        "skills": [],
-        "mcps": []
-      },
-      "designer": {
-        "model": "github-copilot/grok-code-fast-1",
-        "variant": "medium",
-        "skills": ["agent-browser"],
-        "mcps": []
-      },
-      "fixer": {
-        "model": "github-copilot/grok-code-fast-1",
-        "variant": "low",
-        "skills": [],
-        "mcps": ["memory"]
-      }
-    },
-
-    "budget": {
-      "_comment": "Cost-optimized preset using smaller/cheaper models",
-      "orchestrator": {
-        "model": "llm/claude-sonnet-4-6",
-        "skills": ["*"],
-        "mcps": ["websearch", "memory", "time"]
+        "skills": [
+          "*"
+        ],
+        "mcps": [
+          "sequential-thinking",
+          "memory"
+        ]
       },
       "oracle": {
         "model": "llm/claude-sonnet-4-6",
-        "variant": "high",
-        "skills": [],
-        "mcps": ["sequential-thinking"]
-      },
-      "librarian": {
-        "model": "llm/claude-haiku-4-5",
-        "variant": "low",
-        "skills": [],
-        "mcps": ["websearch", "context7"]
-      },
-      "explorer": {
-        "model": "llm/claude-haiku-4-5",
-        "variant": "low",
-        "skills": [],
-        "mcps": []
+        "skills": [
+          "cartography"
+        ],
+        "mcps": [
+          "sequential-thinking",
+          "kubernetes"
+        ]
       },
       "designer": {
+        "model": "github-copilot/gemini-2.5-pro",
+        "skills": [
+          "agent-browser"
+        ],
+        "mcps": [
+          "playwright"
+        ]
+      },
+      "explorer": {
         "model": "llm/claude-sonnet-4-6",
-        "variant": "medium",
-        "skills": ["agent-browser"],
-        "mcps": []
+        "skills": [
+          "cartography"
+        ],
+        "mcps": [
+        ]
+      },
+      "librarian": {
+        "model": "github-copilot/gemini-2.5-pro",
+        "skills": [],
+        "mcps": [
+          "websearch",
+          "context7",
+          "grep_app"
+        ]
       },
       "fixer": {
-        "model": "llm/claude-haiku-4-5",
-        "variant": "low",
-        "skills": [],
-        "mcps": ["memory"]
+        "model": "llm/claude-sonnet-4-6",
+        "skills": [
+          "simplify"
+        ],
+        "mcps": [
+          "memory",
+          "kubernetes"
+        ]
       }
     }
   },
-
+  "balanceProviderUsage": false,
   "fallback": {
     "enabled": true,
     "timeoutMs": 15000,
     "chains": {
       "orchestrator": [
-        "llm/claude-sonnet-4-6",
-        "llm/claude-sonnet-4-5",
-        "llm/gpt-5",
-        "openrouter/deepseek/deepseek-v3"
+        "llm/claude-opus-4-5",
+        "github-copilot/claude-sonnet-4-6"
       ],
       "oracle": [
-        "llm/o3",
-        "llm/claude-sonnet-4-6",
-        "openrouter/deepseek/deepseek-r1",
-        "llm/gpt-5"
+        "llm/claude-sonnet-4-5",
+        "github-copilot/claude-sonnet-4-6"
       ],
       "designer": [
-        "llm/claude-sonnet-4-6",
-        "llm/claude-opus-4-5",
-        "openrouter/meta-llama/llama-4-maverick",
-        "llm/gpt-5"
+        "llm/claude-sonnet-4-5",
+        "github-copilot/claude-sonnet-4-6"
       ],
       "explorer": [
-        "llm/claude-haiku-4-5",
-        "llm/gpt-4.1-mini"
+        "llm/claude-sonnet-4-5",
+        "github-copilot/claude-sonnet-4-6"
       ],
       "librarian": [
         "llm/claude-sonnet-4-5",
-        "openrouter/meta-llama/llama-4-scout",
-        "llm/gpt-5-mini"
+        "github-copilot/claude-sonnet-4-6"
       ],
       "fixer": [
         "llm/claude-sonnet-4-5",
-        "llm/gpt-5-codex",
-        "openrouter/deepseek/deepseek-r1"
+        "github-copilot/claude-sonnet-4-6"
       ]
     }
   }

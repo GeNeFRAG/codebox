@@ -28,6 +28,7 @@ services:
       !override
       - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
       - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
+      - OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1
       - OPENCODE_PORT=3001
     volumes:
       !override
@@ -43,6 +44,10 @@ services:
       - ${HOME}/.gitconfig:/root/.gitconfig:ro
       - ${GIT_CREDENTIALS_PATH:-/dev/null}:/root/.git-credentials:ro
       - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
+      # ─── GitHub Copilot auth (reuse host token) ──────────────
+      - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
+      # ─── Host auth.json (merged at startup for Copilot etc.) ──
+      - ${HOME}/.local/share/opencode/auth.json:/opt/opencode/host-auth.json:ro
 
   # ─────────────────────────────────────────────────────────────
   # Example: another-project — http://localhost:3002
@@ -76,6 +81,10 @@ services:
   #     - ${HOME}/.gitconfig:/root/.gitconfig:ro
   #     - ${GIT_CREDENTIALS_PATH:-/dev/null}:/root/.git-credentials:ro
   #     - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
+  #     # ─── GitHub Copilot auth (reuse host token) ──────────────
+  #     - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
+  #     # ─── Host auth.json (merged at startup for Copilot etc.) ──
+  #     - ${HOME}/.local/share/opencode/auth.json:/opt/opencode/host-auth.json:ro
 
 volumes:
   opencode-data-my-project:

@@ -18,6 +18,7 @@ x-opencode-common: &opencode-common
   environment: &opencode-env
     - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
     - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
+    - OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1
   volumes: &opencode-volumes
     # ─── OpenCode config (commands, skills, plugins) ───────────
     - ${HOME}/.config/opencode/commands:/root/.config/opencode/commands:ro
@@ -31,6 +32,10 @@ x-opencode-common: &opencode-common
     - ${HOME}/.ssh:/root/.ssh:ro
     - ${HOME}/.gitconfig:/root/.gitconfig:ro
     - ${GIT_CREDENTIALS_PATH:-/dev/null}:/root/.git-credentials:ro
+    # ─── GitHub Copilot auth (reuse host token) ────────────────
+    - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
+    # ─── Host auth.json (merged at startup for Copilot etc.) ──
+    - ${HOME}/.local/share/opencode/auth.json:/opt/opencode/host-auth.json:ro
     # ─── CA certificate (optional, for corporate proxies) ─────
     - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
   healthcheck: &opencode-healthcheck
@@ -60,6 +65,7 @@ services:
     environment:
       - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
       - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
+      - OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1
       - OPENCODE_PORT=3000
     volumes:
       - .:/workspace
@@ -74,6 +80,10 @@ services:
       - ${HOME}/.ssh:/root/.ssh:ro
       - ${HOME}/.gitconfig:/root/.gitconfig:ro
       - ${GIT_CREDENTIALS_PATH:-/dev/null}:/root/.git-credentials:ro
+      # ─── GitHub Copilot auth (reuse host token) ────────────────
+      - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
+      # ─── Host auth.json (merged at startup for Copilot etc.) ──
+      - ${HOME}/.local/share/opencode/auth.json:/opt/opencode/host-auth.json:ro
       - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
 
 volumes:

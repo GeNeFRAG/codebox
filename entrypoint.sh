@@ -67,6 +67,28 @@ EOF
     echo "  ✓ Auth configured"
 fi
 
+# ─── Merge host auth.json (Copilot tokens etc.) ───────────────────
+# The host's ~/.local/share/opencode/auth.json is mounted read-only at
+# /opt/opencode/host-auth.json. Any providers in the host file that are
+# NOT already in the container's auth.json get merged in (host entries
+# never overwrite container entries like "llm" or "anthropic").
+HOST_AUTH="/opt/opencode/host-auth.json"
+if [ -f "${HOST_AUTH}" ] && [ -s "${HOST_AUTH}" ] && [ -f "${AUTH_FILE}" ]; then
+    MERGED=$(jq -s '.[0] * .[1]' \
+        "${HOST_AUTH}" "${AUTH_FILE}" 2>/dev/null) || true
+    if [ -n "${MERGED}" ]; then
+        # Count how many keys the host added
+        HOST_KEYS=$(jq -r 'keys[]' "${HOST_AUTH}" 2>/dev/null | grep -v -F -x -f <(jq -r 'keys[]' "${AUTH_FILE}" 2>/dev/null) || true)
+        if [ -n "${HOST_KEYS}" ]; then
+            echo "${MERGED}" > "${AUTH_FILE}"
+            echo "  ✓ Merged host auth providers: $(echo "${HOST_KEYS}" | tr '\n' ', ' | sed 's/,$//')"
+        fi
+    fi
+elif [ -f "${HOST_AUTH}" ] && [ -s "${HOST_AUTH}" ] && [ ! -f "${AUTH_FILE}" ]; then
+    cp "${HOST_AUTH}" "${AUTH_FILE}"
+    echo "  ✓ Using host auth.json (no local auth configured)"
+fi
+
 # ─── Handle corporate CA certificates ──────────────────────────────
 # docker-compose mounts the host cert to /certs/ca-bundle.pem
 CA_CERT="/certs/ca-bundle.pem"
