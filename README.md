@@ -220,7 +220,7 @@ services:
 Containers automatically check for new `opencode-ai` releases every 12 hours.
 
 - **Enabled by default** — set `OPENCODE_AUTOUPDATE=false` in `.env` to disable
-- When enabled: installs the new version and restarts `opencode web` in-place (sessions persist on disk — the web UI reconnects)
+- When enabled: installs the new version quietly (`--loglevel=error`) and restarts `opencode web` in-place (sessions persist on disk — the web UI reconnects)
 - When disabled: logs a notification about the available update but doesn't install it
 - **Manual update**: `./opencode-web.sh update [service]` rebuilds the image with the latest version
 - **Check version**: `./opencode-web.sh version [service]`
@@ -254,6 +254,7 @@ A local HTTP proxy between OpenCode and the upstream LLM API:
 
 - **Listens**: `127.0.0.1:18080` → **Forwards to**: `$LLM_BASE_URL`
 - **Purpose**: Strips trailing assistant messages from `/chat/completions` — some models don't support prefill but OpenCode sends it
+- **Liveness**: The restart loop checks the proxy PID after each `opencode web` exit and relaunches it if dead, ensuring `127.0.0.1:18080` is always reachable before the next start
 - **Logging**: Each request gets a correlation ID (e.g. `[a3f1c2]`). Logs include timings, message counts, stripping events, and periodic stats.
 - **Log levels**: `debug` (everything + headers) · `info` (default) · `warn` (disconnects, 4xx) · `error` (failures, timeouts)
 
@@ -266,7 +267,7 @@ Multi-stage build for minimal image size:
 
 **Builder stage** — `node:22-bookworm-slim` with build tools. Installs `opencode-ai` (version set by `OPENCODE_VERSION` build arg, default `latest`), provider SDKs (`@ai-sdk/openai-compatible`, `@ai-sdk/groq`, `@openrouter/ai-sdk-provider`), and MCP servers globally.
 
-**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `cron`, `tini` (PID 1), Docker CLI, and Bun. Copies `node_modules` from builder and re-creates bin symlinks — MCP servers start instantly with no registry checks.
+**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `cron`, `tini` (PID 1), Docker CLI, Bun, and `python3` (required by the cartography skill). Copies `node_modules` from builder and re-creates bin symlinks — MCP servers start instantly with no registry checks.
 
 </details>
 
