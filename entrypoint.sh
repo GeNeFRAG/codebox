@@ -35,13 +35,20 @@ fi
 
 # ─── LLM Gateway health check — fallback model if unreachable ──────
 if [ -n "${LLM_BASE_URL}" ] && [ -n "${OPENCODE_MODEL_FALLBACK}" ]; then
-    if ! curl -sf --max-time 5 "${LLM_BASE_URL}/health" > /dev/null 2>&1 && \
-       ! curl -sf --max-time 5 "${LLM_BASE_URL}/models" > /dev/null 2>&1; then
-        echo "  ⚠ LLM gateway unreachable (${LLM_BASE_URL}) — falling back to ${OPENCODE_MODEL_FALLBACK}"
-        export OPENCODE_MODEL="${OPENCODE_MODEL_FALLBACK}"
+    HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${LLM_BASE_URL}/health" 2>/dev/null || echo "000")
+    MODELS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${LLM_BASE_URL}/models" 2>/dev/null || echo "000")
+    echo "  → LLM gateway check: /health=${HEALTH_CODE} /models=${MODELS_CODE}"
+    if [[ "${HEALTH_CODE}" =~ ^(2|3) ]] || [[ "${MODELS_CODE}" =~ ^(2|3) ]]; then
+        echo "  ✓ LLM gateway reachable (${LLM_BASE_URL}) — using ${OPENCODE_MODEL}"
     else
-        echo "  ✓ LLM gateway reachable (${LLM_BASE_URL})"
+        echo "  ⚠ LLM gateway unhealthy (${LLM_BASE_URL}) — falling back to ${OPENCODE_MODEL_FALLBACK}"
+        export OPENCODE_MODEL="${OPENCODE_MODEL_FALLBACK}"
+        # Disable prefill proxy — it only applies to the LLM gateway
+        export PREFILL_PROXY="false"
     fi
+else
+    [ -z "${LLM_BASE_URL}" ] && echo "  → LLM gateway check skipped (LLM_BASE_URL not set)"
+    [ -z "${OPENCODE_MODEL_FALLBACK}" ] && echo "  → LLM gateway check skipped (OPENCODE_MODEL_FALLBACK not set)"
 fi
 
 # Only substitute our known variables (avoids clobbering $schema etc.)
