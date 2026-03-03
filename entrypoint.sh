@@ -33,6 +33,17 @@ else
     export CA_CERT_PATH="/dev/null"
 fi
 
+# ─── LLM Gateway health check — fallback model if unreachable ──────
+if [ -n "${LLM_BASE_URL}" ] && [ -n "${OPENCODE_MODEL_FALLBACK}" ]; then
+    if ! curl -sf --max-time 5 "${LLM_BASE_URL}/health" > /dev/null 2>&1 && \
+       ! curl -sf --max-time 5 "${LLM_BASE_URL}/models" > /dev/null 2>&1; then
+        echo "  ⚠ LLM gateway unreachable (${LLM_BASE_URL}) — falling back to ${OPENCODE_MODEL_FALLBACK}"
+        export OPENCODE_MODEL="${OPENCODE_MODEL_FALLBACK}"
+    else
+        echo "  ✓ LLM gateway reachable (${LLM_BASE_URL})"
+    fi
+fi
+
 # Only substitute our known variables (avoids clobbering $schema etc.)
 # Determine the effective LLM URL based on whether the prefill proxy is enabled.
 # The proxy hasn't started yet, but the URL is deterministic — we'll verify later.
