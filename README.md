@@ -16,7 +16,7 @@ open http://localhost:3000
 
 ## TUI Mode (terminal UI in the browser)
 
-Set `OPENCODE_MODE=tui` in `.env` to run the full opencode terminal interface instead of the web UI — the same experience you get when you type `opencode` in iTerm, but served in any browser via [ttyd](https://github.com/tsl0922/ttyd).
+Set `OPENCODE_MODE=tui` in `.env` to run the full opencode terminal interface instead of the web UI — served in any browser via [ttyd](https://github.com/tsl0922/ttyd).
 
 ```bash
 # .env
@@ -32,7 +32,47 @@ open http://localhost:3000   # opens a full xterm.js terminal running opencode
 
 Switch back to the web UI at any time by removing the variable or setting `OPENCODE_MODE=web`.
 
-> **Per-service:** You can mix modes across repos — set `OPENCODE_MODE=tui` in the `environment:` block of any service in `docker-compose.override.yml`.
+> **Per-service:** You can mix modes across repos — set `OPENCODE_MODE` in the `environment:` block of any service in `docker-compose.override.yml`.
+
+### tmux mode
+
+Set `OPENCODE_MODE=tmux` to wrap the TUI in a persistent [tmux](https://github.com/tmux/tmux) session, which gives you:
+
+- **Pane splitting** — `Ctrl-a |` (vertical) and `Ctrl-a -` (horizontal) to run shells alongside opencode
+- **Persistent scrollback** — 50,000 lines of history, scroll with mouse or `Ctrl-a [` (vi keys)
+- **Session persistence** — closing the browser tab doesn't kill opencode; reopening the URL reattaches instantly
+- **Shell access** — attach from the host without a browser:
+
+  ```bash
+  docker exec -it <container> tmux attach -t opencode
+  ```
+
+- **Mouse mode** — enabled by default (click to select panes, scroll)
+
+The default tmux prefix is **Ctrl-a** (not the default Ctrl-b). Key bindings:
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-a \|` | Split pane vertically |
+| `Ctrl-a -` | Split pane horizontally |
+| `Ctrl-a h/j/k/l` | Navigate panes (vim-style) |
+| `Ctrl-a c` | New window |
+| `Ctrl-a [` | Enter copy/scroll mode (vi keys) |
+| `Ctrl-a r` | Reload tmux config |
+
+#### Custom tmux config
+
+Mount your own `tmux.conf` to override the defaults:
+
+```yaml
+# docker-compose.override.yml
+services:
+  my-project:
+    volumes:
+      - ./my-tmux.conf:/root/.config/opencode/tmux.conf:ro
+```
+
+If `/root/.config/opencode/tmux.conf` exists, it replaces the built-in config at startup.
 
 ## CLI (`opencode-web.sh`)
 
@@ -68,11 +108,11 @@ Set these three in `.env`:
 | Variable | Description |
 |----------|-------------|
 | `OPENCODE_PORT` | Web UI / TUI port (default: `3000`) |
-| `OPENCODE_MODE` | `web` (default) — browser web UI · `tui` — terminal UI via ttyd |
+| `OPENCODE_MODE` | `web` (default) — browser web UI · `tui` — terminal UI via ttyd · `tmux` — terminal UI via tmux + ttyd |
 | `OPENCODE_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
 | `OPENCODE_AUTOUPDATE` | Enable in-container auto-updates every 12h (default: `true`). Set `false` for notify-only. |
-| `OPENCODE_EXTRA_ARGS` | Extra arguments passed to `opencode web` or `opencode` (TUI mode) |
-| `OPENCODE_TUI_ARGS` | Extra arguments passed to `ttyd` when `OPENCODE_MODE=tui` |
+| `OPENCODE_EXTRA_ARGS` | Extra arguments passed to `opencode web` or `opencode` (TUI/tmux mode) |
+| `OPENCODE_TUI_ARGS` | Extra arguments passed to `ttyd` when `OPENCODE_MODE=tui` or `tmux` |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
 | `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `true`). Set `false` to connect directly to `LLM_BASE_URL`. |
@@ -236,6 +276,8 @@ services:
 | MCP Docker servers not working | Check for `✓ Docker socket available` in logs. Pull image manually if needed. |
 | Port conflict | Change port in override: `ports: ["3001:3001"]` + `OPENCODE_PORT=3001` |
 | Need a shell | `./opencode-web.sh shell <service>` |
+| TUI: attach to tmux from host | `docker exec -it <container> tmux attach -t opencode` |
+| TUI: custom tmux config | Mount to `/root/.config/opencode/tmux.conf:ro` — applied at startup |
 
 ## Auto-Update
 
@@ -263,11 +305,12 @@ When a container starts, `entrypoint.sh` runs these steps:
 6. **Docker socket check** — Verifies `/var/run/docker.sock` for MCP containers
 7. **Git safe.directory** — Exports `GIT_CONFIG_*` env vars to mark `/workspace` as safe
 8. **Workspace symlink** — Symlinks `/workspace` into `$HOME` so the web UI "Open project" dialog can discover it
-9. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080` (if `PREFILL_PROXY=true`, the default). Used in both `web` and `tui` modes — opencode reads `opencode.json` which routes LLM traffic through the proxy regardless of mode
+9. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080` (if `PREFILL_PROXY=true`, the default). Used in all modes — opencode reads `opencode.json` which routes LLM traffic through the proxy regardless of mode
 10. **Auto-update cron** — Installs a 12-hourly cron job (update or notify-only, per `OPENCODE_AUTOUPDATE`)
 11. **Mode selection** — Reads `OPENCODE_MODE` (default `web`):
     - `web` — starts `opencode web` in a restart loop on `0.0.0.0:${OPENCODE_PORT:-3000}`
-    - `tui` — starts `ttyd opencode` in a restart loop on the same port; browser opens a full xterm.js terminal
+    - `tui` — starts `ttyd` serving the opencode TUI directly in a restart loop on the same port
+    - `tmux` — creates a tmux session (`opencode`) running the TUI in a restart loop, then starts `ttyd` serving `tmux attach` on the same port. Browser opens a full xterm.js terminal with tmux; `docker exec` can also attach to the same session.
 
 </details>
 
@@ -291,7 +334,7 @@ Multi-stage build for minimal image size:
 
 **Builder stage** — `node:22-bookworm-slim` with build tools. Installs `opencode-ai` (version set by `OPENCODE_VERSION` build arg, default `latest`), provider SDKs (`@ai-sdk/openai-compatible`, `@ai-sdk/groq`, `@openrouter/ai-sdk-provider`), and MCP servers globally.
 
-**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `cron`, `tini` (PID 1), Docker CLI, Bun, `python3` (required by the cartography skill), and `ttyd` (web terminal for `OPENCODE_MODE=tui`). Copies `node_modules` from builder and re-creates bin symlinks — MCP servers start instantly with no registry checks.
+**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `cron`, `tini` (PID 1), `tmux` (terminal multiplexer for tmux mode), Docker CLI, Bun, `python3` (required by the cartography skill), and `ttyd` (web terminal for `OPENCODE_MODE=tui` and `tmux`). Copies `node_modules` from builder and re-creates bin symlinks — MCP servers start instantly with no registry checks.
 
 </details>
 
@@ -326,6 +369,7 @@ Multi-stage build for minimal image size:
 ├── entrypoint.sh                       # Container startup script
 ├── opencode-web.sh                     # Host CLI wrapper
 ├── opencode.json.template              # OpenCode config template
+├── tmux.conf                           # tmux configuration (TUI mode)
 ├── prefill-proxy.mjs                   # LLM proxy (strips prefill)
 ├── oh-my-opencode-slim.json.example    # Plugin preset template
 └── ca-bundle.pem                       # CA certificate (gitignored)

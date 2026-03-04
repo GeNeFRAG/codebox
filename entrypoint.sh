@@ -237,20 +237,25 @@ fi
 # Re-create the symlink (in case the binary path shifted)
 ln -sf /usr/local/lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode
 
-# Restart opencode web — tini is PID 1 and entrypoint runs a restart loop,
+# Restart opencode — tini is PID 1 and entrypoint runs a restart loop,
 # so killing the opencode process causes the loop to relaunch it automatically.
+# In tmux mode, opencode runs inside a tmux session with its own restart loop.
 OPENCODE_PID=$(pgrep -f "opencode web" | head -1 || true)
+if [ -z "${OPENCODE_PID}" ]; then
+    # TUI or tmux mode: opencode runs without "web" flag
+    OPENCODE_PID=$(pgrep -x "opencode" | head -1 || true)
+fi
 if [ -n "${OPENCODE_PID}" ]; then
-    echo "${LOG_PREFIX} Restarting opencode web (PID ${OPENCODE_PID})..."
+    echo "${LOG_PREFIX} Restarting opencode (PID ${OPENCODE_PID})..."
     kill -TERM "${OPENCODE_PID}" 2>/dev/null || true
     sleep 5
-    if pgrep -f "opencode web" > /dev/null; then
-        echo "${LOG_PREFIX} ✓ opencode web restarted with v${LATEST}"
+    if pgrep -f "opencode" > /dev/null; then
+        echo "${LOG_PREFIX} ✓ opencode restarted with v${LATEST}"
     else
         echo "${LOG_PREFIX} ⟳ Waiting for restart loop to relaunch..."
     fi
 else
-    echo "${LOG_PREFIX} opencode web not running — update will take effect on next start."
+    echo "${LOG_PREFIX} opencode not running — update will take effect on next start."
 fi
 
 echo ""
@@ -291,6 +296,8 @@ echo ""
 # ─── Mode selection ───────────────────────────────────────────────
 # OPENCODE_MODE=web  (default) — opencode web UI served on OPENCODE_PORT
 # OPENCODE_MODE=tui            — opencode TUI exposed via ttyd on OPENCODE_PORT
+# OPENCODE_MODE=tmux           — opencode TUI inside tmux, exposed via ttyd
+#                                 (persistent session survives browser disconnects)
 OPENCODE_MODE="${OPENCODE_MODE:-web}"
 
 # ── Proxy liveness helper (web mode only) ─────────────────────────
@@ -313,33 +320,87 @@ _restart_proxy() {
 
 cd /workspace
 
-if [ "${OPENCODE_MODE}" = "tui" ]; then
-    # ── TUI mode: run opencode (terminal UI) inside ttyd ─────────
-    # ttyd wraps the opencode TUI in a full xterm.js session and
-    # serves it over WebSocket on OPENCODE_PORT — open in any browser.
-    # Reconnect is enabled by default in ttyd's xterm.js client — no flag needed.
-    # The prefill proxy runs in both modes — opencode reads opencode.json
-    # which points at 127.0.0.1:18080 regardless of web vs TUI.
-    echo "→ Starting opencode TUI via ttyd on 0.0.0.0:${OPENCODE_PORT:-3000}..."
+if [ "${OPENCODE_MODE}" = "tmux" ]; then
+    # ── tmux mode: run opencode inside tmux, served by ttyd ──────
+    # Architecture: ttyd → tmux attach → opencode (restart loop)
+    #
+    # - tmux provides: pane splitting, persistent scrollback, session
+    #   persistence across browser disconnects, and `docker exec` attach
+    # - ttyd serves the tmux session over WebSocket on OPENCODE_PORT
+    # - opencode runs inside tmux in a restart loop (auto-update safe)
+    # - The prefill proxy runs in all modes — opencode reads opencode.json
+    #   which points at 127.0.0.1:18080 regardless of mode.
+
+    TMUX_SESSION="opencode"
+
+    # Apply custom tmux config if mounted
+    if [ -f "/root/.config/opencode/tmux.conf" ]; then
+        cp /root/.config/opencode/tmux.conf /root/.tmux.conf
+        echo "  ✓ Custom tmux.conf applied"
+    fi
+
+    echo "→ Starting opencode TUI via tmux + ttyd on 0.0.0.0:${OPENCODE_PORT:-3000}..."
     echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
+    echo "  Attach: docker exec -it <container> tmux attach -t ${TMUX_SESSION}"
     echo ""
 
-    # Restart loop — mirrors web mode so auto-update cron works the same way.
+    # ── Helper: create tmux session with opencode in a restart loop ──
+    _start_tmux_session() {
+        tmux new-session -d -s "${TMUX_SESSION}" -c /workspace \
+            "while true; do opencode ${OPENCODE_EXTRA_ARGS:-}; echo ''; echo '  ⟳ opencode exited. Restarting in 3s...'; echo ''; sleep 3; done"
+    }
+
+    _start_tmux_session
+
+    # ── Outer loop: ttyd serves tmux attach ──────────────────────────
+    # ttyd connects to the persistent tmux session. If the browser tab
+    # closes, tmux keeps running. Reopening the URL reattaches instantly.
     while true; do
         ttyd \
             --port "${OPENCODE_PORT:-3000}" \
             --interface 0.0.0.0 \
             --writable \
-            --cwd /workspace \
             ${OPENCODE_TUI_ARGS:-} \
-            opencode ${OPENCODE_EXTRA_ARGS:-} || true
+            tmux attach -t "${TMUX_SESSION}" || true
         echo ""
         echo "  ⟳ ttyd exited ($(date)). Restarting in 3s..."
         echo ""
 
         # ── Proxy liveness check ───────────────────────────────────────
-        # Same as web mode — opencode routes LLM traffic through the proxy
-        # in both modes, so restart it if it died while ttyd was running.
+        _restart_proxy
+
+        # ── Ensure tmux session is still alive ─────────────────────────
+        if ! tmux has-session -t "${TMUX_SESSION}" 2>/dev/null; then
+            echo "  ⟳ tmux session lost — recreating..."
+            _start_tmux_session
+        fi
+
+        sleep 3
+    done
+
+elif [ "${OPENCODE_MODE}" = "tui" ]; then
+    # ── TUI mode: opencode TUI served directly by ttyd (no tmux) ──
+    # Architecture: ttyd → opencode (restart loop)
+    #
+    # Simpler than tmux mode — no session persistence across browser
+    # disconnects, no pane splitting. Good for single-window usage.
+
+    echo "→ Starting opencode TUI via ttyd on 0.0.0.0:${OPENCODE_PORT:-3000}..."
+    echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
+    echo ""
+
+    while true; do
+        ttyd \
+            --port "${OPENCODE_PORT:-3000}" \
+            --interface 0.0.0.0 \
+            --writable \
+            ${OPENCODE_TUI_ARGS:-} \
+            bash -c "while true; do opencode ${OPENCODE_EXTRA_ARGS:-}; echo ''; echo '  ⟳ opencode exited. Restarting in 3s...'; echo ''; sleep 3; done" || true
+        echo ""
+        echo "  ⟳ ttyd exited ($(date)). Restarting in 3s..."
+        echo ""
+
+        # ── Proxy liveness check ───────────────────────────────────────
         _restart_proxy
 
         sleep 3

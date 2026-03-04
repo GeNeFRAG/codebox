@@ -61,6 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ripgrep \
         cron \
         tini \
+        tmux \
         python3 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -71,7 +72,7 @@ RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz" \
     | tar xz --strip-components=1 -C /usr/local/bin docker/docker
 
-# ─── ttyd (web terminal — used when OPENCODE_MODE=tui) ─────────────
+# ─── ttyd (web terminal — used when OPENCODE_MODE=tui or tmux) ──────
 ARG TTYD_VERSION=1.7.7
 RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}" \
@@ -103,6 +104,9 @@ RUN mkdir -p /workspace \
     /root/.agents/skills
 
 WORKDIR /workspace
+
+# ─── tmux configuration (TUI mode) ────────────────────────────────
+COPY tmux.conf /root/.tmux.conf
 
 # ─── Entrypoint and config ────────────────────────────────────────
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
