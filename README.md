@@ -80,26 +80,6 @@ services:
 
 If `/root/.config/opencode/tmux.conf` exists, it replaces the built-in config at startup. The built-in config uses `xterm-256color` as the terminal type and enables true-color and RGB passthrough so the opencode TUI renders identically in tmux mode and plain tui mode.
 
-### Mode switching
-
-When opencode exits in `tui` or `tmux` mode (e.g. after typing `/exit`, `/quit`, or `/q`), a mode-selection menu appears instead of silently restarting:
-
-```
-  ┌──────────────────────────────────────┐
-  │       opencode exited — what next?    │
-  └──────────────────────────────────────┘
-
-    1) Web UI (browser)        [web]
-  → 2) Terminal UI              [tui]
-    3) Terminal UI + tmux       [tmux]
-
-    q) Quit opencode
-
-  Select mode [enter = restart tui]: 
-```
-
-Press Enter to restart in the same mode, pick a different number to switch modes without restarting the container, or press `q` to stop. A 30-second timeout auto-restarts in the current mode. Web mode skips this menu and auto-restarts as before (no terminal available).
-
 ## CLI (`opencode-web.sh`)
 
 ```bash
@@ -334,8 +314,8 @@ When a container starts, `entrypoint.sh` runs these steps:
 9. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080` (if `PREFILL_PROXY=true`, the default). Used in all modes — opencode reads `opencode.json` which routes LLM traffic through the proxy regardless of mode
 10. **Mode selection** — Reads `OPENCODE_MODE` (default `web`):
     - `web` — starts `opencode web` in a restart loop on `0.0.0.0:${OPENCODE_PORT:-3000}`
-    - `tui` — starts `ttyd` serving the opencode TUI directly in a restart loop on the same port. When opencode exits, a mode-selection menu is shown, allowing runtime switching to `web` or `tmux` mode without restarting the container.
-    - `tmux` — creates a tmux session (`opencode`) running the TUI in a restart loop, then starts `ttyd` serving `tmux attach` on the same port. Browser opens a full xterm.js terminal with tmux; `docker exec` can also attach to the same session. When opencode exits, the same mode-selection menu is shown (see [Mode switching](#mode-switching)).
+    - `tui` — starts `ttyd` serving the opencode TUI directly in a restart loop on the same port.
+    - `tmux` — creates a tmux session (`opencode`) running the TUI in a restart loop, then starts `ttyd` serving `tmux attach` on the same port. Browser opens a full xterm.js terminal with tmux; `docker exec` can also attach to the same session.
 
 </details>
 
