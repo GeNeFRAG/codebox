@@ -197,3 +197,47 @@ Edit `/root/.config/opencode/oh-my-opencode-slim.json` inside the container (or 
   ```yaml
   - ./my-slim-config.json:/root/.config/opencode/oh-my-opencode-slim.json:ro
   ```
+
+## Agent Monitoring (tmux mode)
+
+When running in tmux mode (`OPENCODE_MODE=tmux`), subagent activity is visible in two ways:
+
+### Status bar
+
+The tmux status bar shows active subagent count and names in real-time (polls every 3s):
+
+```
+ opencode                                    2 ⚡explorer·fixer  14:32
+```
+
+When no subagents are running, only the clock is shown.
+
+### Monitor pane
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-a m` | Toggle agent monitor pane (25% height, bottom) |
+| `Ctrl-a M` | Open agent monitor in a full-screen tmux window |
+
+The monitor tails opencode's log files and displays a filtered, color-coded feed of subagent lifecycle events:
+
+- `▶` agent started (with model name)
+- `●` orchestrator thinking
+- `◆` delegation to subagent
+- `■` agent completed
+
+Each agent type has its own color: orchestrator (blue), explorer (green), fixer (amber), oracle (magenta), librarian (cyan), designer (red).
+
+### Observability sources
+
+The monitoring scripts read from these sources:
+
+| Source | Path | What it provides |
+|--------|------|-----------------|
+| Log files | `/root/.local/share/opencode/log/*.log` | Real-time event stream — every LLM call, tool use, session lifecycle |
+| SQLite DB | `/root/.local/share/opencode/opencode.db` | Structured queries — `opencode db "SELECT ..."` |
+
+Key log patterns for subagent activity:
+- `agent=explorer mode=subagent stream` — subagent LLM call started
+- `service=session.prompt sessionID=... exiting loop` — session finished
+- `service=permission pattern=explorer` — delegation permission evaluated

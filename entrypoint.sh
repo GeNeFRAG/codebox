@@ -195,6 +195,7 @@ echo ""
 # OPENCODE_MODE=tmux           — opencode TUI inside tmux, exposed via ttyd
 #                                 (persistent session survives browser disconnects)
 OPENCODE_MODE="${OPENCODE_MODE:-web}"
+TMUX_SESSION="opencode"
 
 # ── Proxy liveness helper (web mode only) ─────────────────────────
 _restart_proxy() {
@@ -218,16 +219,16 @@ cd /workspace
 
 if [ "${OPENCODE_MODE}" = "tmux" ]; then
     # ── tmux mode: run opencode inside tmux, served by ttyd ──────
-    # Architecture: ttyd → tmux attach → opencode (restart loop)
+    # Architecture: ttyd → wrapper script → tmux new/attach → opencode
     #
-    # - tmux provides: pane splitting, persistent scrollback, session
-    #   persistence across browser disconnects, and `docker exec` attach
-    # - ttyd serves the tmux session over WebSocket on OPENCODE_PORT
-    # - opencode runs inside tmux in a restart loop
-    # - The prefill proxy runs in all modes — opencode reads opencode.json
-    #   which points at 127.0.0.1:18080 regardless of mode.
-
-    TMUX_SESSION="opencode"
+    # Key insight: ttyd negotiates terminal dimensions with the browser
+    # BEFORE spawning the child process. By deferring tmux session
+    # creation to the wrapper script (which ttyd spawns), the session
+    # inherits the correct terminal size from the start — no hooks,
+    # no polling, no race conditions.
+    #
+    # Browser disconnects don't kill the tmux session; reopening the
+    # URL reattaches instantly.
 
     # Apply custom tmux config if mounted
     if [ -f "/root/.config/opencode/tmux.conf" ]; then
@@ -240,76 +241,75 @@ if [ "${OPENCODE_MODE}" = "tmux" ]; then
     echo "  Attach: docker exec -it <container> tmux attach -t ${TMUX_SESSION}"
     echo ""
 
-    # ── Helper: create tmux session with opencode in a restart loop ──
-    _start_tmux_session() {
-        tmux new-session -d -s "${TMUX_SESSION}" -c /workspace \
-            "while true; do opencode ${OPENCODE_EXTRA_ARGS:-}; echo ''; echo '  ⟳ opencode exited. Restarting in 3s...'; echo ''; sleep 3; done"
-    }
+    # Write the tmux wrapper script. ttyd executes this on each browser
+    # connection. Terminal dimensions are already correct at this point.
+    cat > /tmp/tmux-wrapper.sh <<'WRAPPER'
+#!/bin/bash
+TMUX_SESSION="opencode"
+if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    # Session exists (reconnection or browser refresh) — just attach.
+    exec tmux attach -t "$TMUX_SESSION"
+else
+    # First connection — create session with correct terminal dimensions.
+    # ttyd has already negotiated the real browser size, so $COLUMNS/$LINES
+    # (or tput) reflect the actual dimensions. We pass -x/-y to ensure
+    # the detached session starts at the right size BEFORE opencode renders.
+    COLS=$(tput cols  2>/dev/null || echo 180)
+    ROWS=$(tput lines 2>/dev/null || echo 50)
+    tmux new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
+        "while true; do /usr/local/bin/opencode EXTRA_ARGS_PLACEHOLDER; echo ''; echo '  ⟳ opencode exited. Restarting in 3s...'; echo ''; sleep 3; done"
+    # Auto-open agent monitor pane at bottom (25% height)
+    tmux split-window -t "$TMUX_SESSION" -v -l 25% -c /workspace \
+        "printf '\033]2;agent-monitor\033\\' && bash /opt/opencode/agent-monitor.sh"
+    # Focus back to the main opencode pane
+    tmux select-pane -t "$TMUX_SESSION":0.0
+    exec tmux attach -t "$TMUX_SESSION"
+fi
+WRAPPER
+    sed -i "s|EXTRA_ARGS_PLACEHOLDER|${OPENCODE_EXTRA_ARGS:-}|" /tmp/tmux-wrapper.sh
+    chmod +x /tmp/tmux-wrapper.sh
 
-    _start_tmux_session
-
-    # ── Outer loop: ttyd serves tmux attach ──────────────────────────
-    # ttyd connects to the persistent tmux session. If the browser tab
-    # closes, tmux keeps running. Reopening the URL reattaches instantly.
+    # ttyd serves the wrapper. If ttyd crashes, restart it.
+    # The tmux session persists independently across ttyd restarts.
     while true; do
         ttyd \
             --port "${OPENCODE_PORT:-3000}" \
             --interface 0.0.0.0 \
             --writable \
             ${OPENCODE_TUI_ARGS:-} \
-            tmux attach -t "${TMUX_SESSION}" || true
-        echo ""
-        echo "  ⟳ ttyd exited ($(date)). Restarting in 3s..."
-        echo ""
-
-        # ── Proxy liveness check ───────────────────────────────────────
-        _restart_proxy
-
-        # ── Ensure tmux session is still alive ─────────────────────────
-        if ! tmux has-session -t "${TMUX_SESSION}" 2>/dev/null; then
-            echo "  ⟳ tmux session lost — recreating..."
-            _start_tmux_session
-        fi
-
+            /tmp/tmux-wrapper.sh || true
         sleep 3
     done
 
 elif [ "${OPENCODE_MODE}" = "tui" ]; then
-    # ── TUI mode: opencode TUI served directly by ttyd (no tmux) ──
-    # Architecture: ttyd → opencode (restart loop)
-    #
-    # Simpler than tmux mode — no session persistence across browser
-    # disconnects, no pane splitting. Good for single-window usage.
-
+    # ── TUI mode: opencode TUI served directly by ttyd ───────────
     echo "→ Starting opencode TUI via ttyd on 0.0.0.0:${OPENCODE_PORT:-3000}..."
     echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
     echo ""
 
+    # Restart loop — if opencode or ttyd exits, restart after 3s.
     while true; do
         ttyd \
             --port "${OPENCODE_PORT:-3000}" \
             --interface 0.0.0.0 \
             --writable \
+            --cwd /workspace \
             ${OPENCODE_TUI_ARGS:-} \
-            bash -c "while true; do opencode ${OPENCODE_EXTRA_ARGS:-}; echo ''; echo '  ⟳ opencode exited. Restarting in 3s...'; echo ''; sleep 3; done" || true
+            opencode ${OPENCODE_EXTRA_ARGS:-} || true
         echo ""
         echo "  ⟳ ttyd exited ($(date)). Restarting in 3s..."
         echo ""
-
-        # ── Proxy liveness check ───────────────────────────────────────
-        _restart_proxy
-
         sleep 3
     done
 
 else
-    # ── Web mode (default): opencode web UI ───────────────────────
+    # ── Web mode (default): opencode web UI ──────────────────────
     echo "→ Starting opencode web on 0.0.0.0:${OPENCODE_PORT:-3000}..."
     echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
     echo ""
 
     while true; do
-        opencode web \
+        /usr/local/bin/opencode web \
             --hostname 0.0.0.0 \
             --port "${OPENCODE_PORT:-3000}" \
             ${OPENCODE_EXTRA_ARGS:-} || true
@@ -317,12 +317,7 @@ else
         echo "  ⟳ opencode web exited ($(date)). Restarting in 3s..."
         echo ""
 
-        # ── Proxy liveness check ───────────────────────────────────────
-        # The prefill proxy is a long-lived background process. If it died
-        # (crash, OOM, etc.) while opencode was running, restart it now so
-        # the next opencode web launch can reach 127.0.0.1:18080.
         _restart_proxy
-
         sleep 3
     done
 fi

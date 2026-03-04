@@ -122,7 +122,9 @@ COPY tmux.conf /root/.tmux.conf
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY opencode.json.template /opt/opencode/opencode.json.template
 COPY prefill-proxy.mjs /opt/opencode/prefill-proxy.mjs
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY agent-monitor.sh /opt/opencode/agent-monitor.sh
+COPY agent-status.sh /opt/opencode/agent-status.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /opt/opencode/agent-monitor.sh /opt/opencode/agent-status.sh
 
 # Port is set at runtime via OPENCODE_PORT (default 3000)
 # EXPOSE is omitted — each compose service maps its own port.

@@ -204,7 +204,7 @@
         "mcp-server-memory"
       ],
       "environment": {
-        "MEMORY_FILE_PATH": "/root/.config/opencode/memory.json"
+        "MEMORY_FILE_PATH": "/root/.config/opencode/memory/memory.json"
       }
     },
     "context7": {
