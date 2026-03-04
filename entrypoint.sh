@@ -252,17 +252,19 @@ if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
 else
     # First connection — create session with correct terminal dimensions.
     # ttyd has already negotiated the real browser size, so $COLUMNS/$LINES
-    # (or tput) reflect the actual dimensions. We pass -x/-y to ensure
-    # the detached session starts at the right size BEFORE opencode renders.
+    # (or tput) reflect the actual dimensions. Create the layout first,
+    # then start opencode so it renders with the correct dimensions.
     COLS=$(tput cols  2>/dev/null || echo 180)
     ROWS=$(tput lines 2>/dev/null || echo 50)
-    tmux new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
-        "while true; do /usr/local/bin/opencode EXTRA_ARGS_PLACEHOLDER; echo ''; echo '  ⟳ opencode exited. Restarting in 3s...'; echo ''; sleep 3; done"
-    # Auto-open agent monitor pane at bottom (25% height)
+    # Create empty session with correct dimensions
+    tmux new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace
+    # Split window for agent monitor (25% height at bottom)
     tmux split-window -t "$TMUX_SESSION" -v -l 25% -c /workspace \
         "printf '\033]2;agent-monitor\033\\' && bash /opt/opencode/agent-monitor.sh"
-    # Focus back to the main opencode pane
+    # Focus back to main pane and start opencode there
     tmux select-pane -t "$TMUX_SESSION":0.0
+    tmux send-keys -t "$TMUX_SESSION":0.0 \
+        "while true; do /usr/local/bin/opencode EXTRA_ARGS_PLACEHOLDER; echo ''; echo '  ⟳ opencode exited. Restarting in 3s...'; echo ''; sleep 3; done" C-m
     exec tmux attach -t "$TMUX_SESSION"
 fi
 WRAPPER
