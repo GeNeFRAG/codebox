@@ -1,6 +1,16 @@
 # OpenCode Web — Docker
 
-Persistent AI coding agent running in Docker with a browser-based web UI. Each repo gets its own isolated container with dedicated volumes, MCP servers, and port.
+Run [OpenCode](https://github.com/opencode-ai/opencode) — an AI coding agent — entirely inside Docker, accessible from any browser. No local Node.js, no CLI install, no environment clutter. Point it at your LLM provider, pick a UI mode, and open `localhost:3000`.
+
+Three modes, all served in the browser:
+
+| Mode | Set in `.env` | What you get |
+|------|--------------|--------------|
+| **web** (default) | `OPENCODE_MODE=web` | OpenCode's built-in browser UI |
+| **tui** | `OPENCODE_MODE=tui` | The full terminal UI rendered in the browser via [ttyd](https://github.com/tsl0922/ttyd) / xterm.js — identical to running `opencode` in a local terminal |
+| **tmux** | `OPENCODE_MODE=tmux` | Same terminal UI, but wrapped in a persistent [tmux](https://github.com/tmux/tmux) session — survives browser disconnects, supports pane splitting, shell access alongside opencode, and a built-in agent activity monitor |
+
+Each repo gets its own isolated container with dedicated volumes, MCP servers, and port.
 
 ## Quick Start
 
@@ -14,57 +24,70 @@ open http://localhost:3000
 
 > **Corporate proxy?** Copy your CA bundle to `./ca-bundle.pem` and set `CA_CERT_PATH` in `.env`.
 
-## TUI Mode (terminal UI in the browser)
+## UI Modes
 
-Set `OPENCODE_MODE=tui` in `.env` to run the full opencode terminal interface instead of the web UI — served in any browser via [ttyd](https://github.com/tsl0922/ttyd).
+### web (default)
+
+Nothing to configure — `./opencode-web.sh start` launches OpenCode's browser UI on port 3000. This is the standard graphical interface with file trees, conversation panels, and tool output.
+
+### tui — terminal UI in the browser
+
+Set `OPENCODE_MODE=tui` in `.env` to run OpenCode's terminal interface instead. It's served in the browser via [ttyd](https://github.com/tsl0922/ttyd) — you see a full xterm.js terminal running `opencode`, exactly as it would look in a local terminal. Useful if you prefer the keyboard-driven TUI or want a lighter-weight experience.
 
 ```bash
 # .env
 OPENCODE_MODE=tui
 ```
 
-Then start normally:
+Start normally — the same URL now opens a terminal:
 
 ```bash
 ./opencode-web.sh start
-open http://localhost:3000   # opens a full xterm.js terminal running opencode
+open http://localhost:3000
 ```
 
-Switch back to the web UI at any time by removing the variable or setting `OPENCODE_MODE=web`.
+Switch back at any time by removing the variable or setting `OPENCODE_MODE=web`.
 
 > **Per-service:** You can mix modes across repos — set `OPENCODE_MODE` in the `environment:` block of any service in `docker-compose.override.yml`.
 
-### tmux mode
+### tmux — persistent terminal UI
 
-Set `OPENCODE_MODE=tmux` to wrap the TUI in a persistent [tmux](https://github.com/tmux/tmux) session, which gives you:
+`OPENCODE_MODE=tmux` wraps the TUI in a persistent tmux session. This is the same terminal UI as `tui` mode, but with important differences:
 
-- **Pane splitting** — `Ctrl-a |` (vertical) and `Ctrl-a -` (horizontal) to run shells alongside opencode
-- **Persistent scrollback** — 50,000 lines of history, scroll with mouse or `Ctrl-a [` (vi keys)
-- **Session persistence** — closing the browser tab doesn't kill opencode; reopening the URL reattaches instantly
-- **Shell access** — attach from the host without a browser:
+| | tui | tmux |
+|---|-----|------|
+| **Session persistence** | Closing the browser tab kills opencode | Session survives — reopening the URL reattaches instantly |
+| **Pane splitting** | Single pane only | Split panes to run shells alongside opencode |
+| **Shell access from host** | Not possible | `docker exec -it <container> tmux attach -t opencode` |
+| **Scrollback** | Browser-managed | 50,000 lines, vi keys, mouse scroll |
+| **Agent monitor** | Not available | Built-in status bar + live monitor pane showing subagent activity |
 
-  ```bash
-  docker exec -it <container> tmux attach -t opencode
-  ```
+```bash
+# .env
+OPENCODE_MODE=tmux
+```
 
-- **Mouse mode** — enabled by default (click to select panes, scroll)
-
-The default tmux prefix is **Ctrl-a** (not the default Ctrl-b). Key bindings:
+The default tmux prefix is **Ctrl-Space** (not the default Ctrl-b). Key bindings:
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-a \|` | Split pane vertically |
-| `Ctrl-a -` | Split pane horizontally |
-| `Ctrl-a h/j/k/l` | Navigate panes (vim-style) |
-| `Ctrl-a c` | New window |
-| `Ctrl-a [` | Enter copy/scroll mode (vi keys) |
-| `Ctrl-a r` | Reload tmux config |
-| `Ctrl-a m` | Toggle agent monitor pane (25% height, bottom) |
-| `Ctrl-a M` | Open agent monitor in a new tmux window |
+| `Ctrl-Space \|` | Split pane vertically |
+| `Ctrl-Space -` | Split pane horizontally |
+| `Ctrl-Space h/j/k/l` | Navigate panes (vim-style) |
+| `Ctrl-Space H/J/K/L` | Resize panes (5 cells, repeatable) |
+| `Ctrl-Space Ctrl-Space` | Cycle to next pane |
+| `Ctrl-Space c` | New window |
+| `Ctrl-Space Enter` | Enter copy/scroll mode (vi keys) |
+| `Ctrl-Space r` | Reload tmux config |
+| `Option-m` | Toggle agent monitor pane (25% height, bottom) |
+| `Option-Shift-m` | Agent monitor fullscreen window |
+| `Option-s` | Toggle status bar |
+
+> **Note:** The `Ctrl-Space` prefix is intercepted by most browsers and ttyd, so the `m`/`M`/`s` monitor bindings use `Option-` root keys instead (no prefix needed). The pane/window bindings above work because `Ctrl-Space` + a letter typically passes through.
 
 #### Agent monitor
 
-The status bar shows active subagent count and names (e.g. `2 ⚡explorer·fixer`) while agents are running. Press `Ctrl-a m` to open a live monitor pane at the bottom of the screen — it shows a color-coded feed of subagent lifecycle events: spawns, completions, delegations, and orchestrator thinking. Press `Ctrl-a M` to open the same feed in a dedicated tmux window instead.
+The **status bar** shows session info on the left (`opencode │ branch │ model │ context-size`) and active subagent activity on the right (e.g. `2 ⚡explorer·fixer`) plus the local time. Press `Option-m` (or `Ctrl-Space m`) to open a live monitor pane at the bottom of the screen — it polls the SQLite DB and shows a color-coded feed of subagent lifecycle events: `▶ agent started` (with model name and timestamp) and `■ agent done` (with duration and token usage: in/out/cache). Press `Option-Shift-m` (or `Ctrl-Space M`) to open the same feed in a dedicated tmux window instead.
 
 #### Custom tmux config
 
@@ -86,8 +109,8 @@ If `/root/.config/opencode/tmux.conf` exists, it replaces the built-in config at
 ./opencode-web.sh start   [service]   # Build & start (all or one)
 ./opencode-web.sh stop    [service]   # Stop
 ./opencode-web.sh restart [service]   # Restart
-./opencode-web.sh logs    <service>   # Follow logs
-./opencode-web.sh shell   <service>   # Bash into container
+./opencode-web.sh logs    [service]   # Follow logs
+./opencode-web.sh shell   [service]   # Bash into container
 ./opencode-web.sh rebuild [service]   # Force rebuild & start
 ./opencode-web.sh update  [service]   # Rebuild with latest opencode-ai
 ./opencode-web.sh version [service]   # Show opencode-ai version in container
@@ -116,12 +139,15 @@ Set these three in `.env`:
 | `OPENCODE_PORT` | Web UI / TUI port (default: `3000`) |
 | `OPENCODE_MODE` | `web` (default) — browser web UI · `tui` — terminal UI via ttyd · `tmux` — terminal UI via tmux + ttyd |
 | `OPENCODE_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
+| `OPENCODE_MODEL_FALLBACK` | Fallback model if LLM gateway is unreachable at startup (e.g. `github-copilot/gemini-2.5-pro`) |
 | `OPENCODE_EXTRA_ARGS` | Extra arguments passed to `opencode web` or `opencode` (TUI/tmux mode) |
 | `OPENCODE_TUI_ARGS` | Extra arguments passed to `ttyd` when `OPENCODE_MODE=tui` or `tmux` |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
 | `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `true`). Set `false` to connect directly to `LLM_BASE_URL`. |
 | `PROXY_LOG_LEVEL` | Prefill proxy verbosity: `debug` / `info` (default) / `warn` / `error` |
+| `DOCKER_NETWORK_MODE` | Set to `host` on Linux to bypass Docker bridge NAT (~70-80ms savings). Not supported on Docker Desktop. |
+| `GIT_CREDENTIALS_PATH` | Host path to `.git-credentials` for HTTPS push (default: `/dev/null` = disabled) |
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `GITHUB_ENTERPRISE_TOKEN` | GitHub Enterprise PAT |
 | `GITHUB_ENTERPRISE_URL` | GitHub Enterprise URL |
@@ -194,9 +220,7 @@ Switch by setting `"preset"` in the JSON file:
 
 | Preset | Description |
 |--------|-------------|
-| `default` | Full quality — Opus for orchestrator/oracle/designer, Sonnet for librarian/fixer, Haiku for explorer |
-| `copilot` | All agents via GitHub Copilot (Grok) |
-| `budget` | Cost-optimised — Sonnet for orchestrator/oracle/designer, Haiku for librarian/explorer/fixer |
+| `default` | Full quality — Opus orchestrator, Sonnet oracle/explorer/fixer, Gemini 2.5 Pro designer/librarian |
 
 ### Agent Roles
 
@@ -221,12 +245,12 @@ When a primary model is unavailable or exceeds `timeoutMs` (default 15s), the ne
   "enabled": true,
   "timeoutMs": 15000,
   "chains": {
-    "orchestrator": ["llm/claude-sonnet-4-6", "llm/claude-sonnet-4-5", "llm/gpt-5"],
-    "oracle":       ["llm/o3", "llm/claude-sonnet-4-6", "openrouter/deepseek/deepseek-r1"],
-    "designer":     ["llm/claude-sonnet-4-6", "llm/claude-opus-4-5"],
-    "explorer":     ["llm/claude-haiku-4-5", "llm/gpt-4.1-mini"],
-    "librarian":    ["llm/claude-sonnet-4-5", "openrouter/meta-llama/llama-4-scout"],
-    "fixer":        ["llm/claude-sonnet-4-5", "llm/gpt-5-codex"]
+    "orchestrator": ["llm/claude-opus-4-5", "github-copilot/gemini-2.5-pro"],
+    "oracle":       ["llm/claude-sonnet-4-5", "github-copilot/gemini-2.5-pro"],
+    "designer":     ["llm/claude-sonnet-4-5", "github-copilot/gemini-2.5-pro"],
+    "explorer":     ["llm/claude-sonnet-4-5", "github-copilot/gemini-2.5-pro"],
+    "librarian":    ["llm/claude-sonnet-4-5", "github-copilot/gemini-2.5-pro"],
+    "fixer":        ["llm/claude-sonnet-4-5", "github-copilot/gemini-2.5-pro"]
   }
 }
 ```
@@ -286,6 +310,7 @@ services:
 | Port conflict | Change port in override: `ports: ["3001:3001"]` + `OPENCODE_PORT=3001` |
 | Need a shell | `./opencode-web.sh shell <service>` |
 | TUI: attach to tmux from host | `docker exec -it <container> tmux attach -t opencode` |
+| TUI: tmux key bindings not working | Use `Option-m` / `Option-s` root bindings (Mac); or try `Ctrl-Space` prefix (may be intercepted by browser/ttyd) |
 | TUI: custom tmux config | Mount to `/root/.config/opencode/tmux.conf:ro` — applied at startup |
 
 ## Updating
@@ -303,16 +328,19 @@ Packages are installed at Docker image build time only — there are no in-conta
 
 When a container starts, `entrypoint.sh` runs these steps:
 
-1. **Config generation** — `envsubst` on `opencode.json.template` → `opencode.json`
-2. **Auth setup** — Writes `auth.json` with `LLM_API_KEY` for anthropic/llm providers
-3. **CA certificate install** — If `/certs/ca-bundle.pem` is mounted and non-empty, installs into system store + sets `NODE_EXTRA_CA_CERTS`
-4. **Plugin install** — `npm install` in config dir if `package.json` exists
-5. **Project config check** — Detects `/workspace/.opencode` project-level config
-6. **Docker socket check** — Verifies `/var/run/docker.sock` for MCP containers
-7. **Git safe.directory** — Exports `GIT_CONFIG_*` env vars to mark `/workspace` as safe
-8. **Workspace symlink** — Symlinks `/workspace` into `$HOME` so the web UI "Open project" dialog can discover it
-9. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080` (if `PREFILL_PROXY=true`, the default). Used in all modes — opencode reads `opencode.json` which routes LLM traffic through the proxy regardless of mode
-10. **Mode selection** — Reads `OPENCODE_MODE` (default `web`):
+1. **Config generation** — `envsubst` on `opencode.json.template` → `opencode.json`. Resolves `CA_CERT_PATH` to the host-side absolute path (for sibling Docker containers) by inspecting the container's own mounts.
+2. **LLM gateway health check** — If `OPENCODE_MODEL_FALLBACK` is set, probes `LLM_BASE_URL/models`. On failure, switches `OPENCODE_MODEL` to the fallback and disables the prefill proxy.
+3. **Auth setup** — Writes `auth.json` with `LLM_API_KEY` for anthropic/llm providers
+4. **Host auth merge** — If the host's `auth.json` is mounted (Copilot tokens etc.), merges new providers into the container's `auth.json` without overwriting existing entries
+5. **CA certificate install** — If `/certs/ca-bundle.pem` is mounted and non-empty, installs into system store + sets `NODE_EXTRA_CA_CERTS`
+6. **Plugin install** — `npm install` in config dir if `package.json` exists
+7. **Project config check** — Detects `/workspace/.opencode` project-level config
+8. **Docker socket check** — Verifies `/var/run/docker.sock` for MCP containers
+9. **Git safe.directory** — Exports `GIT_CONFIG_*` env vars to mark `/workspace` as safe
+10. **Git credentials check** — Validates `.git-credentials` mount (warns if it's a directory instead of a file)
+11. **Workspace symlink** — Symlinks `/workspace` into `$HOME` so the web UI "Open project" dialog can discover it
+12. **Prefill proxy** — Launches `prefill-proxy.mjs` on `127.0.0.1:18080` (if `PREFILL_PROXY=true`, the default) and warms up the upstream TLS connection. Used in all modes — opencode reads `opencode.json` which routes LLM traffic through the proxy regardless of mode
+13. **Mode selection** — Reads `OPENCODE_MODE` (default `web`):
     - `web` — starts `opencode web` in a restart loop on `0.0.0.0:${OPENCODE_PORT:-3000}`
     - `tui` — starts `ttyd` serving the opencode TUI directly in a restart loop on the same port.
     - `tmux` — creates a tmux session (`opencode`) running the TUI in a restart loop, then starts `ttyd` serving `tmux attach` on the same port. Browser opens a full xterm.js terminal with tmux; `docker exec` can also attach to the same session.
@@ -354,6 +382,8 @@ Multi-stage build for minimal image size:
 | `/root/.ssh` | SSH keys for git (ro) |
 | `/root/.gitconfig` | Git config (ro) |
 | `/root/.git-credentials` | Git credentials (ro) |
+| `/root/.config/github-copilot` | GitHub Copilot auth reuse from host (ro) |
+| `/opt/opencode/host-auth.json` | Host auth.json for provider merge at startup (ro) |
 | `/var/run/docker.sock` | Docker socket for MCP containers |
 | `/certs/ca-bundle.pem` | CA certificate (ro) |
 
@@ -367,15 +397,21 @@ Multi-stage build for minimal image size:
 ├── docker-compose.yml                  # Base service definition
 ├── docker-compose.override.yml.example # Template for your repos
 ├── docker-compose.override.yml         # Your repo services (gitignored)
+├── .dockerignore                       # Docker build context exclusions
+├── .gitignore                          # Git ignore rules
 ├── .env.example / .env                 # Config template / your secrets (gitignored)
 ├── entrypoint.sh                       # Container startup script
 ├── opencode-web.sh                     # Host CLI wrapper
 ├── opencode.json.template              # OpenCode config template
 ├── tmux.conf                           # tmux configuration (TUI mode)
 ├── agent-monitor.sh                    # Agent activity monitor for tmux pane
+├── agent-monitor-toggle.sh             # Toggle agent monitor pane on/off
 ├── agent-status.sh                     # tmux status bar subagent indicator
+├── session-status.sh                   # tmux status bar: model, branch, context size
 ├── prefill-proxy.mjs                   # LLM proxy (strips prefill)
 ├── oh-my-opencode-slim.json.example    # Plugin preset config (baked into image at build)
+├── AGENTS.md                           # Agent architecture documentation
+├── LICENSE                             # Project license
 └── ca-bundle.pem                       # CA certificate (gitignored)
 ```
 

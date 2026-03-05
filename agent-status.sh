@@ -9,8 +9,11 @@
 #
 # Usage: bash /opt/opencode/agent-status.sh
 
-# A session is "active" if it was updated in the last 30 seconds
-# and is a subagent (has parent_id)
+# A session is "active" if its most recent message arrived in the
+# last 30 seconds and it is a subagent (has parent_id).
+# We use MAX(message.time_created) instead of s.time_updated because
+# the session row's time_updated is only bumped on finalization, not
+# on every new message — so it lags behind actual activity.
 ACTIVE_THRESHOLD_MS=30000
 
 now_ms=$(date +%s%3N 2>/dev/null || echo "0")
@@ -23,7 +26,10 @@ result=$(opencode db "
     LEFT JOIN message m ON m.session_id = s.id
         AND m.rowid = (SELECT MIN(rowid) FROM message WHERE session_id = s.id)
     WHERE s.parent_id IS NOT NULL
-      AND (${now_ms} - s.time_updated) < ${ACTIVE_THRESHOLD_MS}
+      AND (${now_ms} - COALESCE(
+            (SELECT MAX(time_created) FROM message WHERE session_id = s.id),
+            s.time_created
+          )) < ${ACTIVE_THRESHOLD_MS}
     ORDER BY s.time_created ASC
 " --format tsv 2>/dev/null | tail -n +2)  # skip header
 

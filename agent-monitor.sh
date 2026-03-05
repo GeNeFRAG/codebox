@@ -30,7 +30,7 @@ GRAY="\033[38;5;243m"
 _agent_color() {
     case "$1" in
         orchestrator) echo -e "${BLUE}" ;;
-        explorer)     echo -e "${GREEN}" ;;
+        explorer|explore) echo -e "${GREEN}" ;;
         fixer)        echo -e "${YELLOW}" ;;
         oracle)       echo -e "${MAGENTA}" ;;
         librarian)    echo -e "${CYAN}" ;;
