@@ -73,6 +73,7 @@ _print_header() {
     echo -e "${DIM}─────────────────────────────────────────${RESET}"
     echo -e "  ${BLUE}■${RESET} orchestrator  ${GREEN}■${RESET} explorer  ${YELLOW}■${RESET} fixer"
     echo -e "  ${MAGENTA}■${RESET} oracle  ${CYAN}■${RESET} librarian  ${RED}■${RESET} designer"
+    echo -e "  ${DIM}▶ active  ■ done  ✗ cancelled  ⚠ error${RESET}"
     echo -e "${DIM}─────────────────────────────────────────${RESET}"
     echo ""
 }
@@ -134,6 +135,30 @@ _query_tokens() {
     " --format tsv 2>/dev/null | tail -n +2 | head -1
 }
 
+# ─── Query finish status for a session ────────────────────────────
+# Checks the last assistant message for error/cancellation signals.
+# Returns: "cancelled", "error:<name>", or "ok"
+_query_finish_status() {
+    local sid="$1"
+    local error_name
+    error_name=$(opencode db "
+        SELECT COALESCE(json_extract(data, '\$.error.name'), '')
+        FROM message
+        WHERE session_id = '${sid}'
+          AND json_extract(data, '\$.role') = 'assistant'
+        ORDER BY rowid DESC
+        LIMIT 1
+    " --format tsv 2>/dev/null | tail -n +2 | head -1)
+
+    if [ "$error_name" = "MessageAbortedError" ]; then
+        echo "cancelled"
+    elif [ -n "$error_name" ]; then
+        echo "error:${error_name}"
+    else
+        echo "ok"
+    fi
+}
+
 # ─── Format token count to human-readable (e.g. 1.2k, 45.3k) ────
 _fmt_tokens() {
     local n="${1:-0}"
@@ -159,6 +184,23 @@ _print_done() {
     dur_str=$(_fmt_duration "$duration")
     local ts
     ts=$(_fmt_time "$last_msg_time")
+    # Determine finish status (cancelled / error / ok)
+    local finish_status status_icon status_label
+    finish_status=$(_query_finish_status "$sid")
+    case "$finish_status" in
+        cancelled)
+            status_icon="✗"
+            status_label="cancelled"
+            ;;
+        error:*)
+            status_icon="⚠"
+            status_label="error"
+            ;;
+        *)
+            status_icon="■"
+            status_label="done"
+            ;;
+    esac
     # Fetch token usage
     local token_line tok_in tok_out tok_cache token_str=""
     token_line=$(_query_tokens "$sid")
@@ -166,7 +208,7 @@ _print_done() {
         IFS=$'\t' read -r tok_in tok_out tok_cache <<< "$token_line"
         token_str="  ${DIM}in:$(_fmt_tokens "$tok_in") out:$(_fmt_tokens "$tok_out") cache:$(_fmt_tokens "$tok_cache")${RESET}"
     fi
-    echo -e "  ${color}■${RESET} ${BOLD}${agent}${RESET} ${DIM}done${RESET}  ${GRAY}${dur_str}${RESET}${token_str}  ${DIM}${ts}${RESET}"
+    echo -e "  ${color}${status_icon}${RESET} ${BOLD}${agent}${RESET} ${DIM}${status_label}${RESET}  ${GRAY}${dur_str}${RESET}${token_str}  ${DIM}${ts}${RESET}"
 }
 
 # ─── Parse a tracked session record ──────────────────────────────

@@ -198,6 +198,17 @@ echo ""
 # lifecycles — avoids showing stale model/token data after a rebuild.
 date +%s%3N > /tmp/.opencode-startup-ts
 
+# ─── Auto-detect browser tab title from Docker Compose service name ─
+# If OPENCODE_TITLE is not set, derive it from the Compose service label
+# (e.g. "my-project" → "OpenCode — my-project"). Requires Docker socket.
+if [ -z "${OPENCODE_TITLE}" ]; then
+    _compose_svc=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' "$(hostname)" 2>/dev/null || true)
+    if [ -n "${_compose_svc}" ] && [ "${_compose_svc}" != "<no value>" ]; then
+        export OPENCODE_TITLE="OpenCode — ${_compose_svc}"
+        echo "  ✓ Browser tab title: ${OPENCODE_TITLE}"
+    fi
+fi
+
 # ─── Mode selection ───────────────────────────────────────────────
 # OPENCODE_MODE=web  (default) — opencode web UI served on OPENCODE_PORT
 # OPENCODE_MODE=tui            — opencode TUI exposed via ttyd on OPENCODE_PORT
