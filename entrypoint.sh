@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# ─── UTF-8 locale (safety net if Dockerfile ENV is not inherited) ──
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+
 CONFIG_DIR="/root/.config/opencode"
 DATA_DIR="/root/.local/share/opencode"
 TEMPLATE="/opt/opencode/opencode.json.template"
@@ -248,22 +252,21 @@ if [ "${OPENCODE_MODE}" = "tmux" ]; then
 TMUX_SESSION="opencode"
 if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
     # Session exists (reconnection or browser refresh) — just attach.
-    exec tmux attach -t "$TMUX_SESSION"
+    exec tmux -u attach -t "$TMUX_SESSION"
 else
     # First connection — create session with correct terminal dimensions.
     # ttyd has already negotiated the real browser size, so $COLUMNS/$LINES
     # (or tput) reflect the actual dimensions. We pass -x/-y to ensure
     # the detached session starts at the right size BEFORE opencode renders.
+    # -u forces UTF-8 mode regardless of locale detection.
     COLS=$(tput cols  2>/dev/null || echo 180)
     ROWS=$(tput lines 2>/dev/null || echo 50)
-    tmux new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
+    tmux -u new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
         "while true; do /usr/local/bin/opencode EXTRA_ARGS_PLACEHOLDER; echo ''; echo '  ⟳ opencode exited. Restarting in 3s...'; echo ''; sleep 3; done"
-    # Auto-open agent monitor pane at bottom (25% height)
-    tmux split-window -t "$TMUX_SESSION" -v -l 25% -c /workspace \
-        "printf '\033]2;agent-monitor\033\\' && bash /opt/opencode/agent-monitor.sh"
-    # Focus back to the main opencode pane
-    tmux select-pane -t "$TMUX_SESSION":0.0
-    exec tmux attach -t "$TMUX_SESSION"
+    # tmux is invisible infrastructure — no status bar, no split panes.
+    # The user sees only opencode, identical to plain tui mode.
+    # Agent monitor is available on demand: Ctrl-a m (split) / Ctrl-a M (fullscreen)
+    exec tmux -u attach -t "$TMUX_SESSION"
 fi
 WRAPPER
     sed -i "s|EXTRA_ARGS_PLACEHOLDER|${OPENCODE_EXTRA_ARGS:-}|" /tmp/tmux-wrapper.sh

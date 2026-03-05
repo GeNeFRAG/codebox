@@ -50,6 +50,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/custom-ca.crt
 ENV NODE_OPTIONS="--use-openssl-ca"
 
+# ─── UTF-8 locale ─────────────────────────────────────────────────
+# Required for Unicode rendering in tmux, ttyd, and TUI apps (box
+# drawing, bullets, emoji, status bar glyphs).  C.UTF-8 is always
+# available on bookworm-slim without installing extra locale packages.
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
 # ─── Runtime tools only (NO build-essential, NO docker.io) ─────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
