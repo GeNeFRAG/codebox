@@ -3,15 +3,20 @@
 # ═══════════════════════════════════════════════════════════════════
 FROM node:22-bookworm-slim AS builder
 
-# Corporate CA cert (optional): place your ca-bundle.pem in the build context
-# or mount at runtime via docker-compose volume to /certs/ca-bundle.pem
-COPY ca-bundle.pem* /usr/local/share/ca-certificates/custom-ca.crt
+# Corporate CA cert (optional): passed as a build secret from CA_CERT_PATH.
+# At runtime, mounted via docker-compose volume to /certs/ca-bundle.pem.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates build-essential python3 curl \
-    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=secret,id=ca-cert,required=false \
+    mkdir -p /certs && \
+    if [ -s /run/secrets/ca-cert ]; then \
+        cp /run/secrets/ca-cert /usr/local/share/ca-certificates/custom-ca.crt && \
+        cp /run/secrets/ca-cert /certs/ca-bundle.pem && \
+        update-ca-certificates; \
+    fi
 
-ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/custom-ca.crt
+ENV NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
 ENV NODE_OPTIONS="--use-openssl-ca"
 
 # Install opencode-ai globally
@@ -42,12 +47,18 @@ FROM node:22-bookworm-slim AS runtime
 LABEL description="OpenCode AI Web - persistent AI coding agent"
 
 # ─── CA certificate ────────────────────────────────────────────────
-COPY ca-bundle.pem* /usr/local/share/ca-certificates/custom-ca.crt
+# Build secret from CA_CERT_PATH; at runtime, compose mounts to /certs/ca-bundle.pem.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=secret,id=ca-cert,required=false \
+    mkdir -p /certs && \
+    if [ -s /run/secrets/ca-cert ]; then \
+        cp /run/secrets/ca-cert /usr/local/share/ca-certificates/custom-ca.crt && \
+        cp /run/secrets/ca-cert /certs/ca-bundle.pem && \
+        update-ca-certificates; \
+    fi
 
-ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/custom-ca.crt
+ENV NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
 ENV NODE_OPTIONS="--use-openssl-ca"
 
 # ─── UTF-8 locale ─────────────────────────────────────────────────

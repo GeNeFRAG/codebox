@@ -20,19 +20,19 @@ echo "╚═══════════════════════�
 echo "→ Generating opencode.json from template..."
 
 # Resolve CA_CERT_PATH to the absolute host path for sibling Docker containers.
-# docker-compose mounts $CA_CERT_PATH → /certs/ca-bundle.pem inside this container,
-# but MCP servers run as sibling containers via the Docker socket, so they need the
-# actual host path. We discover it by inspecting our own container's mounts.
+# Compose mounts CA_CERT_PATH → /certs/ca-bundle.pem inside this container,
+# but MCP servers run as sibling containers via the Docker socket, so their
+# -v flags need the real host path. The user may have used ~ in .env, which
+# Compose expands for volume mounts but NOT for environment variables.
+# We resolve the actual host path from our own container's mount metadata.
 if [ -f /certs/ca-bundle.pem ] && [ -s /certs/ca-bundle.pem ]; then
-    HOST_CA_PATH=$(docker inspect "$(hostname)" 2>/dev/null \
-        | node -e "const j=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); \
-           const m=j[0]?.Mounts?.find(m=>m.Destination==='/certs/ca-bundle.pem'); \
-           console.log(m?.Source||'')" 2>/dev/null || true)
+    HOST_CA_PATH=$(docker inspect "$(hostname)" \
+        --format '{{range .Mounts}}{{if eq .Destination "/certs/ca-bundle.pem"}}{{.Source}}{{end}}{{end}}' \
+        2>/dev/null || true)
     if [ -n "${HOST_CA_PATH}" ]; then
         export CA_CERT_PATH="${HOST_CA_PATH}"
-    else
-        export CA_CERT_PATH="/dev/null"
     fi
+    # If docker inspect failed (no socket?), fall through with the .env value as-is
 else
     export CA_CERT_PATH="/dev/null"
 fi
@@ -142,10 +142,25 @@ else
 fi
 
 # ─── Git configuration ────────────────────────────────────────────
-# Host .gitconfig is mounted read-only; use env vars to add safe.directory
-export GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0="safe.directory"
-export GIT_CONFIG_VALUE_0="/workspace"
+# Host .gitconfig is mounted read-only; use env vars to add safe.directory.
+# Discover all git repos under /workspace (supports multi-repo workspaces).
+_git_idx=0
+_repo_count=0
+for _gitdir in /workspace/.git /workspace/*/.git; do
+    [ -d "${_gitdir}" ] || continue
+    _repo_path="$(dirname "${_gitdir}")"
+    export "GIT_CONFIG_KEY_${_git_idx}=safe.directory"
+    export "GIT_CONFIG_VALUE_${_git_idx}=${_repo_path}"
+    _git_idx=$((_git_idx + 1))
+    _repo_count=$((_repo_count + 1))
+done
+export GIT_CONFIG_COUNT="${_git_idx}"
+
+if [ "${_repo_count}" -gt 1 ]; then
+    echo "  ✓ Multi-repo workspace: ${_repo_count} repos discovered"
+elif [ "${_repo_count}" -eq 1 ]; then
+    echo "  ✓ Git safe.directory configured"
+fi
 
 # Validate .git-credentials mount
 GIT_CRED="/root/.git-credentials"
@@ -159,11 +174,25 @@ fi
 # ─── Expose /workspace under $HOME for "Open project" dialog ──────
 # The web UI searches $HOME for project directories. Inside Docker,
 # /root only has dotfiles which are filtered out, so the dialog is
-# empty. Symlinking /workspace into $HOME makes it discoverable.
-WORKSPACE_NAME="$(basename "$(cd /workspace && git rev-parse --show-toplevel 2>/dev/null || echo /workspace)")"
-if [ ! -e "${HOME}/${WORKSPACE_NAME}" ]; then
-    ln -sf /workspace "${HOME}/${WORKSPACE_NAME}"
-    echo "  ✓ Symlinked /workspace → ~/${WORKSPACE_NAME}"
+# empty. Symlinking repos into $HOME makes them discoverable.
+if [ "${_repo_count}" -gt 1 ]; then
+    # Multi-repo: symlink each sub-repo individually
+    for _gitdir in /workspace/*/.git; do
+        [ -d "${_gitdir}" ] || continue
+        _repo_path="$(dirname "${_gitdir}")"
+        _repo_name="$(basename "${_repo_path}")"
+        if [ ! -e "${HOME}/${_repo_name}" ]; then
+            ln -sf "${_repo_path}" "${HOME}/${_repo_name}"
+        fi
+    done
+    echo "  ✓ Symlinked ${_repo_count} repos into ~/ for project discovery"
+else
+    # Single-repo: symlink /workspace itself
+    WORKSPACE_NAME="$(basename "$(cd /workspace && git rev-parse --show-toplevel 2>/dev/null || echo /workspace)")"
+    if [ ! -e "${HOME}/${WORKSPACE_NAME}" ]; then
+        ln -sf /workspace "${HOME}/${WORKSPACE_NAME}"
+        echo "  ✓ Symlinked /workspace → ~/${WORKSPACE_NAME}"
+    fi
 fi
 
 # ─── Start prefill proxy (strips trailing assistant messages) ─────

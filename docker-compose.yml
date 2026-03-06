@@ -12,6 +12,8 @@ x-opencode-common: &opencode-common
     dockerfile: Dockerfile
     args:
       OPENCODE_VERSION: ${OPENCODE_VERSION:-latest}
+    secrets:
+      - ca-cert
   restart: unless-stopped
   env_file:
     - .env
@@ -90,3 +92,7 @@ volumes:
     name: opencode-data-self
   opencode-memory-self:
     name: opencode-memory-self
+
+secrets:
+  ca-cert:
+    file: ${CA_CERT_PATH:-/dev/null}

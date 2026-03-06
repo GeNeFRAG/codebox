@@ -78,6 +78,50 @@ services:
   #     # ─── Host auth.json (merged at startup for Copilot etc.) ──
   #     - ${HOME}/.local/share/opencode/auth.json:/opt/opencode/host-auth.json:ro
 
+  # ─────────────────────────────────────────────────────────────
+  # Example: multi-repo workspace — http://localhost:3003
+  #
+  # Mount specific repos as subdirectories of /workspace.
+  # The agent sees all of them and can edit/commit across repos.
+  # Only repos you mount are included — others in REPOS_PATH are
+  # not visible.
+  #
+  # The entrypoint auto-discovers git repos under /workspace/*
+  # and configures git safe.directory + web UI project discovery
+  # for each one.
+  # ─────────────────────────────────────────────────────────────
+  # my-fullstack:
+  #   extends:
+  #     file: docker-compose.yml
+  #     service: opencode-docker
+  #   container_name: opencode-my-fullstack
+  #   ports:
+  #     !override
+  #     - "3003:3003"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3003/"]
+  #   environment:
+  #     !override
+  #     - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
+  #     - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
+  #     - OPENCODE_PORT=3003
+  #   volumes:
+  #     !override
+  #     # ─── Multi-repo: mount each repo as a subdirectory ───────
+  #     - ${REPOS_PATH:-~/repos}/api:/workspace/api
+  #     - ${REPOS_PATH:-~/repos}/frontend:/workspace/frontend
+  #     - ${REPOS_PATH:-~/repos}/shared-lib:/workspace/shared-lib
+  #     # ─── Data & config (per-workspace) ───────────────────────
+  #     - opencode-data-fullstack:/root/.local/share/opencode
+  #     - opencode-memory-fullstack:/root/.config/opencode/memory
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - ${HOME}/.ssh:/root/.ssh:ro
+  #     - ${HOME}/.gitconfig:/root/.gitconfig:ro
+  #     - ${GIT_CREDENTIALS_PATH:-/dev/null}:/root/.git-credentials:ro
+  #     - ${CA_CERT_PATH:-/dev/null}:/certs/ca-bundle.pem:ro
+  #     - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
+  #     - ${HOME}/.local/share/opencode/auth.json:/opt/opencode/host-auth.json:ro
+
 volumes:
   opencode-data-my-project:
     name: opencode-data-my-project
@@ -87,3 +131,7 @@ volumes:
   #   name: opencode-data-another
   # opencode-memory-another:
   #   name: opencode-memory-another
+  # opencode-data-fullstack:
+  #   name: opencode-data-fullstack
+  # opencode-memory-fullstack:
+  #   name: opencode-memory-fullstack

@@ -219,7 +219,6 @@
     },
     "sequential-thinking": {
       "type": "local",
-      "enabled": false,
       "command": [
         "mcp-server-sequential-thinking"
       ]
