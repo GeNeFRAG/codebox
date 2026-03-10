@@ -16,7 +16,7 @@
 #
 # Designed to run in a tmux split pane alongside the opencode TUI.
 
-POLL_INTERVAL=2        # seconds between DB polls
+POLL_INTERVAL=3        # seconds between DB polls
 SAFETY_TIMEOUT_MS=120000  # fallback: mark done if no messages for 2 min
 REPLAY_WINDOW_MS=300000   # 5 minutes — how far back to replay on startup
 

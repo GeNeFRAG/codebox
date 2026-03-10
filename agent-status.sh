@@ -9,6 +9,29 @@
 #
 # Usage: bash /opt/opencode/agent-status.sh
 
+# ─── File-based cache (avoid spawning opencode db on every tmux refresh) ─
+# Adaptive TTL: when idle (empty result), poll infrequently (30s) since
+# nothing is changing.  When agents are active, poll frequently (5s) to
+# keep the status bar responsive.
+CACHE_FILE="/tmp/.agent-status-cache"
+CACHE_TTL_ACTIVE=5   # seconds — agents are running, refresh often
+CACHE_TTL_IDLE=30    # seconds — no agents, barely poll at all
+
+if [ -f "$CACHE_FILE" ]; then
+    cache_age=$(( $(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) ))
+    cached=$(cat "$CACHE_FILE")
+    # Pick TTL based on whether the cached result shows active agents
+    if [ -n "$cached" ]; then
+        ttl=$CACHE_TTL_ACTIVE
+    else
+        ttl=$CACHE_TTL_IDLE
+    fi
+    if [ "$cache_age" -lt "$ttl" ]; then
+        echo "$cached"
+        exit 0
+    fi
+fi
+
 # A session is active if its last assistant message has NOT completed:
 # either $.finish is NULL/tool-calls, or $.finish="stop" but
 # $.time.completed is not yet set (LLM still streaming).
@@ -61,7 +84,11 @@ result=$(${OPENCODE_BIN_PATH:-opencode} db "
     ORDER BY s.time_created ASC
 " --format tsv 2>/dev/null | tail -n +2)  # skip header
 
-[ -z "$result" ] && { echo ""; exit 0; }
+if [ -z "$result" ]; then
+    echo "" > "$CACHE_FILE"
+    cat "$CACHE_FILE"
+    exit 0
+fi
 
 # Deduplicate agent names and count
 declare -A names
@@ -73,8 +100,11 @@ while IFS= read -r agent; do
 done <<< "$result"
 
 if [ "$count" -eq 0 ]; then
-    echo ""
+    output=""
 else
     name_list=$(echo "${!names[@]}" | tr ' ' '·')
-    echo "#[fg=#e0af68,bold]${count}#[fg=#565f89] ⚡#[fg=#a9b1d6]${name_list}"
+    output="#[fg=#e0af68,bold]${count}#[fg=#565f89] ⚡#[fg=#a9b1d6]${name_list}"
 fi
+
+echo "$output" > "$CACHE_FILE"
+echo "$output"

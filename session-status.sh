@@ -9,6 +9,22 @@
 # Defaults to UTC if not set.
 export TZ="${TZ:-UTC}"
 
+# ─── File-based cache (avoid spawning opencode db on every tmux refresh) ─
+# Session info (model, context size) changes only when the user sends a
+# message, so a 30s TTL is fine for idle periods.  When agent-status
+# detects active agents, it invalidates this cache so we pick up context
+# growth sooner (see agent-status.sh).
+CACHE_FILE="/tmp/.session-status-cache"
+CACHE_TTL=30  # seconds — model/branch rarely change mid-conversation
+
+if [ -f "$CACHE_FILE" ]; then
+    cache_age=$(( $(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) ))
+    if [ "$cache_age" -lt "$CACHE_TTL" ]; then
+        cat "$CACHE_FILE"
+        exit 0
+    fi
+fi
+
 # ─── Git branch ───────────────────────────────────────────────────
 branch=$(git -C /workspace branch --show-current 2>/dev/null || echo "?")
 
@@ -51,4 +67,6 @@ else
 fi
 
 # ─── Output ───────────────────────────────────────────────────────
-echo "#[fg=#7aa2f7,bold] opencode #[fg=#565f89]│#[fg=#9ece6a] ${branch} #[fg=#565f89]│#[fg=#bb9af7] ${model:-?} #[fg=#565f89]│#[fg=#e0af68] ${ctx_str} ctx "
+output="#[fg=#7aa2f7,bold] opencode #[fg=#565f89]│#[fg=#9ece6a] ${branch} #[fg=#565f89]│#[fg=#bb9af7] ${model:-?} #[fg=#565f89]│#[fg=#e0af68] ${ctx_str} ctx "
+echo "$output" > "$CACHE_FILE"
+echo "$output"
