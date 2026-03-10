@@ -5,20 +5,20 @@
 # Polls the opencode SQLite database to display a real-time view
 # of subagent lifecycle events (spawned, active, completed).
 #
+# Completion is detected via the $.finish field AND $.time.completed
+# on the last assistant message.  $.finish="stop" is written when the
+# message row is first created, but the LLM may still be streaming.
+# $.time.completed is set only after generation finishes.  A session
+# is truly done when finish="stop" AND completed is non-empty.
+# A safety timeout handles edge cases where finish never arrives.
+#
 # Usage: bash /opt/opencode/agent-monitor.sh
 #
 # Designed to run in a tmux split pane alongside the opencode TUI.
 
-POLL_INTERVAL=2  # seconds between DB polls
-# Number of consecutive stable polls before marking done.
-# With POLL_INTERVAL=2, this means 5×2=10s of no new messages → done.
-# This must be generous enough for agents that pause while "thinking"
-# (e.g. oracle can pause 10-20s between messages).
-STABLE_THRESHOLD=5
-
-# Seconds of quiet that tells us a session is "definitely done" during
-# the initial seed phase (matches the status-bar threshold in agent-status.sh).
-SEED_ACTIVE_THRESHOLD_S=15
+POLL_INTERVAL=2        # seconds between DB polls
+SAFETY_TIMEOUT_MS=120000  # fallback: mark done if no messages for 2 min
+REPLAY_WINDOW_MS=300000   # 5 minutes — how far back to replay on startup
 
 # ─── Colors ───────────────────────────────────────────────────────
 RESET="\033[0m"
@@ -79,9 +79,14 @@ _print_header() {
 }
 
 # ─── Query subagent sessions from the DB ──────────────────────────
-# Returns TSV: session_id  agent  model  time_created  msg_count  last_msg_time
+# Returns TSV: session_id  agent  model  time_created  msg_count  last_msg_time  finish  error_name  completed
 # Only considers sessions from the current container lifecycle.
 # Uses a single aggregation query (no correlated subqueries) for speed.
+#
+# Completion logic:  finish="stop" is written to the DB when the message
+# row is first created, but the LLM may still be streaming.  The field
+# $.time.completed is set only after generation finishes.  Therefore a
+# session is truly done when  finish="stop" AND completed!="".
 _query_subagents() {
     local startup_ts
     startup_ts=$(cat /tmp/.opencode-startup-ts 2>/dev/null || echo "0")
@@ -92,7 +97,10 @@ _query_subagents() {
             COALESCE(first_msg.model, '?') as model,
             s.time_created,
             COALESCE(agg.msg_count, 0) as msg_count,
-            COALESCE(agg.last_msg_time, s.time_created) as last_msg_time
+            COALESCE(agg.last_msg_time, s.time_created) as last_msg_time,
+            COALESCE(last_asst.finish, '') as finish,
+            COALESCE(last_asst.error_name, '') as error_name,
+            COALESCE(last_asst.completed, '') as completed
         FROM session s
         LEFT JOIN (
             SELECT
@@ -114,6 +122,21 @@ _query_subagents() {
             FROM message
             GROUP BY session_id
         ) agg ON agg.session_id = s.id
+        LEFT JOIN (
+            SELECT
+                m.session_id,
+                json_extract(m.data, '\$.finish') as finish,
+                json_extract(m.data, '\$.error.name') as error_name,
+                json_extract(m.data, '\$.time.completed') as completed
+            FROM message m
+            INNER JOIN (
+                SELECT session_id, MAX(rowid) as max_rowid
+                FROM message
+                WHERE json_extract(data, '\$.role') = 'assistant'
+                GROUP BY session_id
+            ) lm ON m.session_id = lm.session_id AND m.rowid = lm.max_rowid
+            WHERE json_extract(m.data, '\$.role') = 'assistant'
+        ) last_asst ON last_asst.session_id = s.id
         WHERE s.parent_id IS NOT NULL
           AND s.time_created >= ${startup_ts}
         ORDER BY s.time_created ASC
@@ -135,30 +158,6 @@ _query_tokens() {
     " --format tsv 2>/dev/null | tail -n +2 | head -1
 }
 
-# ─── Query finish status for a session ────────────────────────────
-# Checks the last assistant message for error/cancellation signals.
-# Returns: "cancelled", "error:<name>", or "ok"
-_query_finish_status() {
-    local sid="$1"
-    local error_name
-    error_name=$(opencode db "
-        SELECT COALESCE(json_extract(data, '\$.error.name'), '')
-        FROM message
-        WHERE session_id = '${sid}'
-          AND json_extract(data, '\$.role') = 'assistant'
-        ORDER BY rowid DESC
-        LIMIT 1
-    " --format tsv 2>/dev/null | tail -n +2 | head -1)
-
-    if [ "$error_name" = "MessageAbortedError" ]; then
-        echo "cancelled"
-    elif [ -n "$error_name" ]; then
-        echo "error:${error_name}"
-    else
-        echo "ok"
-    fi
-}
-
 # ─── Format token count to human-readable (e.g. 1.2k, 45.3k) ────
 _fmt_tokens() {
     local n="${1:-0}"
@@ -175,8 +174,9 @@ _fmt_tokens() {
 }
 
 # ─── Print a "done" line for a session ────────────────────────────
+# Args: sid  agent  tcreated  last_msg_time  error_name
 _print_done() {
-    local sid="$1" agent="$2" tcreated="$3" last_msg_time="$4"
+    local sid="$1" agent="$2" tcreated="$3" last_msg_time="$4" error_name="$5"
     local color
     color=$(_agent_color "$agent")
     local duration=$(( last_msg_time - tcreated ))
@@ -184,23 +184,21 @@ _print_done() {
     dur_str=$(_fmt_duration "$duration")
     local ts
     ts=$(_fmt_time "$last_msg_time")
-    # Determine finish status (cancelled / error / ok)
-    local finish_status status_icon status_label
-    finish_status=$(_query_finish_status "$sid")
-    case "$finish_status" in
-        cancelled)
-            status_icon="✗"
-            status_label="cancelled"
-            ;;
-        error:*)
-            status_icon="⚠"
-            status_label="error"
-            ;;
-        *)
-            status_icon="■"
-            status_label="done"
-            ;;
-    esac
+    # Determine finish status from error_name
+    local status_icon status_label
+    if [ "$error_name" = "MessageAbortedError" ]; then
+        status_icon="✗"
+        status_label="cancelled"
+    elif [ "$error_name" = "(timeout)" ]; then
+        status_icon="■"
+        status_label="timeout"
+    elif [ -n "$error_name" ]; then
+        status_icon="⚠"
+        status_label="error"
+    else
+        status_icon="■"
+        status_label="done"
+    fi
     # Fetch token usage
     local token_line tok_in tok_out tok_cache token_str=""
     token_line=$(_query_tokens "$sid")
@@ -212,10 +210,11 @@ _print_done() {
 }
 
 # ─── Parse a tracked session record ──────────────────────────────
-# Format: agent|model|time_created|status|msg_count|last_msg_time|stable_count
+# Format: agent|model|time_created|status|msg_count|last_msg_time|finish|error_name|completed
 _parse_session() {
     local entry="$1"
-    IFS='|' read -r _s_agent _s_model _s_tcreated _s_status _s_msg_count _s_last_msg _s_stable <<< "$entry"
+    _s_agent="" _s_model="" _s_tcreated="" _s_status="" _s_msg_count="" _s_last_msg="" _s_finish="" _s_error_name="" _s_completed=""
+    IFS='|' read -r _s_agent _s_model _s_tcreated _s_status _s_msg_count _s_last_msg _s_finish _s_error_name _s_completed <<< "$entry"
 }
 
 # ─── Main monitor loop ────────────────────────────────────────────
@@ -243,47 +242,49 @@ main() {
     fi
 
     # Track known sessions
-    # key=session_id, value="agent|model|time_created|status|msg_count|last_msg_time|stable_count"
+    # key=session_id, value="agent|model|time_created|status|msg_count|last_msg_time|finish|error_name|completed"
     declare -A known_sessions
 
     # ── Seed: replay recent sessions, detect currently-active ones ─
-    # Sessions from the last REPLAY_WINDOW are shown.
-    # CRITICAL FIX: sessions with recent message activity are seeded as
-    # "active" so the poll loop continues to track them. Previously all
-    # seeds were marked "done", causing running agents to appear finished.
-    local REPLAY_WINDOW_MS=300000  # 5 minutes
+    # Sessions from the last REPLAY_WINDOW_MS are shown.
+    # A session is truly done when finish="stop" AND completed is non-empty
+    # (meaning the LLM has finished generating), or when error_name is set.
+    # Sessions with finish="stop" but completed="" are still streaming.
     local now_ms
     now_ms=$(date +%s%3N 2>/dev/null || echo "0")
     local replay_cutoff=$(( now_ms - REPLAY_WINDOW_MS ))
-    local active_cutoff_ms=$(( SEED_ACTIVE_THRESHOLD_S * 1000 ))
 
     local seed_data old_count=0 replay_count=0 active_count=0
     seed_data=$(_query_subagents)
-    while IFS=$'\t' read -r sid agent model tcreated msg_count last_msg_time; do
+    while IFS=$'\t' read -r sid agent model tcreated msg_count last_msg_time finish error_name completed; do
         [ -z "$sid" ] && continue
 
-        local age_ms=$(( now_ms - last_msg_time ))
+        # A session is done when: (finish="stop" AND completed is set) OR error_name is set
+        local is_done=false
+        if { [ "$finish" = "stop" ] && [ -n "$completed" ]; } || [ -n "$error_name" ]; then
+            is_done=true
+        fi
 
-        if [ "$tcreated" -lt "$replay_cutoff" ] && [ "$age_ms" -ge "$active_cutoff_ms" ]; then
-            # Old session, no recent activity — suppress silently
-            known_sessions["$sid"]="${agent}|${model}|${tcreated}|done|${msg_count}|${last_msg_time}|0"
+        if [ "$is_done" = true ] && [ "$tcreated" -lt "$replay_cutoff" ]; then
+            # Old finished session — suppress silently
+            known_sessions["$sid"]="${agent}|${model}|${tcreated}|done|${msg_count}|${last_msg_time}|${finish}|${error_name}|${completed}"
             old_count=$(( old_count + 1 ))
 
-        elif [ "$age_ms" -lt "$active_cutoff_ms" ]; then
-            # Recent message activity — this agent may still be running!
-            known_sessions["$sid"]="${agent}|${model}|${tcreated}|active|${msg_count}|${last_msg_time}|0"
+        elif [ "$is_done" = true ]; then
+            # Recent finished session — replay as done
+            known_sessions["$sid"]="${agent}|${model}|${tcreated}|done|${msg_count}|${last_msg_time}|${finish}|${error_name}|${completed}"
+            replay_count=$(( replay_count + 1 ))
+            _print_done "$sid" "$agent" "$tcreated" "$last_msg_time" "$error_name"
+
+        else
+            # Agent is still active: finish is empty, "tool-calls", or "stop" without completed
+            known_sessions["$sid"]="${agent}|${model}|${tcreated}|active|${msg_count}|${last_msg_time}|${finish}|${error_name}|${completed}"
             active_count=$(( active_count + 1 ))
             local color
             color=$(_agent_color "$agent")
             local ts
             ts=$(_fmt_time "$tcreated")
             echo -e "  ${color}▶${RESET} ${BOLD}${agent}${RESET} ${DIM}active${RESET}  ${GRAY}${model}${RESET}  ${DIM}${ts}${RESET}"
-
-        else
-            # Recent session that's finished — replay as done
-            known_sessions["$sid"]="${agent}|${model}|${tcreated}|done|${msg_count}|${last_msg_time}|0"
-            replay_count=$(( replay_count + 1 ))
-            _print_done "$sid" "$agent" "$tcreated" "$last_msg_time"
         fi
     done <<< "$seed_data"
 
@@ -308,7 +309,9 @@ main() {
         # Build a set of current session IDs from the query
         declare -A current_ids
 
-        while IFS=$'\t' read -r sid agent model tcreated msg_count last_msg_time; do
+        now_ms=$(date +%s%3N 2>/dev/null || echo "0")
+
+        while IFS=$'\t' read -r sid agent model tcreated msg_count last_msg_time finish error_name completed; do
             [ -z "$sid" ] && continue
             current_ids["$sid"]=1
 
@@ -319,31 +322,24 @@ main() {
                 local ts
                 ts=$(_fmt_time "$tcreated")
                 echo -e "  ${color}▶${RESET} ${BOLD}${agent}${RESET} ${DIM}started${RESET}  ${GRAY}${model}${RESET}  ${DIM}${ts}${RESET}"
-                known_sessions["$sid"]="${agent}|${model}|${tcreated}|active|${msg_count}|${last_msg_time}|0"
+                known_sessions["$sid"]="${agent}|${model}|${tcreated}|active|${msg_count}|${last_msg_time}|${finish}|${error_name}|${completed}"
 
             elif [[ "${known_sessions[$sid]}" == *"|active|"* ]]; then
-                # ── Known active session — check for message activity changes
-                local prev_data="${known_sessions[$sid]}"
-                _parse_session "$prev_data"
-                local prev_msg_count="$_s_msg_count"
-                local prev_last_msg="$_s_last_msg"
-                local stable_count="$_s_stable"
-
-                if [ "$msg_count" = "$prev_msg_count" ] && [ "$last_msg_time" = "$prev_last_msg" ]; then
-                    # No new messages — increment stable counter
-                    stable_count=$(( stable_count + 1 ))
+                # ── Known active session — check finish + completed fields
+                if { [ "$finish" = "stop" ] && [ -n "$completed" ]; } || [ -n "$error_name" ]; then
+                    # Truly done: finish="stop" with completed timestamp, or error
+                    _print_done "$sid" "$agent" "$tcreated" "$last_msg_time" "$error_name"
+                    known_sessions["$sid"]="${agent}|${model}|${tcreated}|done|${msg_count}|${last_msg_time}|${finish}|${error_name}|${completed}"
                 else
-                    # Activity detected — reset stable counter
-                    stable_count=0
-                fi
-
-                if [ "$stable_count" -ge "$STABLE_THRESHOLD" ]; then
-                    # Stable long enough — mark as done
-                    _print_done "$sid" "$agent" "$tcreated" "$last_msg_time"
-                    known_sessions["$sid"]="${agent}|${model}|${tcreated}|done|${msg_count}|${last_msg_time}|0"
-                else
-                    # Still active — update tracking
-                    known_sessions["$sid"]="${agent}|${model}|${tcreated}|active|${msg_count}|${last_msg_time}|${stable_count}"
+                    # Safety net: no completion signal but idle too long
+                    local idle_ms=$(( now_ms - last_msg_time ))
+                    if [ "$idle_ms" -gt "$SAFETY_TIMEOUT_MS" ]; then
+                        _print_done "$sid" "$agent" "$tcreated" "$last_msg_time" "(timeout)"
+                        known_sessions["$sid"]="${agent}|${model}|${tcreated}|done|${msg_count}|${last_msg_time}|${finish}|${error_name}|${completed}"
+                    else
+                        # Still active — update tracking
+                        known_sessions["$sid"]="${agent}|${model}|${tcreated}|active|${msg_count}|${last_msg_time}|${finish}|${error_name}|${completed}"
+                    fi
                 fi
             fi
         done <<< "$new_data"
@@ -354,10 +350,8 @@ main() {
             [ "$_s_status" != "active" ] && continue
 
             if [ -z "${current_ids[$sid]+x}" ]; then
-                local color
-                color=$(_agent_color "$_s_agent")
-                echo -e "  ${color}■${RESET} ${BOLD}${_s_agent}${RESET} ${DIM}gone${RESET}"
-                known_sessions["$sid"]="${_s_agent}|${_s_model}|${_s_tcreated}|done|${_s_msg_count}|${_s_last_msg}|0"
+                _print_done "$sid" "$_s_agent" "$_s_tcreated" "$_s_last_msg" "$_s_error_name"
+                known_sessions["$sid"]="${_s_agent}|${_s_model}|${_s_tcreated}|done|${_s_msg_count}|${_s_last_msg}|${_s_finish}|${_s_error_name}|${_s_completed}"
             fi
         done
 

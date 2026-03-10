@@ -9,12 +9,11 @@
 #
 # Usage: bash /opt/opencode/agent-status.sh
 
-# A session is "active" if its most recent message arrived within
-# this threshold.  Must be generous enough for agents that pause
-# while thinking (oracle can pause 10-20s between messages).
-# This threshold is intentionally aligned with STABLE_THRESHOLD × POLL_INTERVAL
-# in agent-monitor.sh (5×2=10s) so both scripts agree on what's active.
-ACTIVE_THRESHOLD_MS=15000
+# A session is active if its last assistant message has NOT completed:
+# either $.finish is NULL/tool-calls, or $.finish="stop" but
+# $.time.completed is not yet set (LLM still streaming).
+# The safety timeout evicts sessions stuck without ever completing.
+SAFETY_TIMEOUT_MS=120000
 
 now_ms=$(date +%s%3N 2>/dev/null || echo "0")
 STARTUP_TS=$(cat /tmp/.opencode-startup-ts 2>/dev/null || echo "0")
@@ -41,9 +40,24 @@ result=$(opencode db "
         FROM message
         GROUP BY session_id
     ) agg ON agg.session_id = s.id
+    LEFT JOIN (
+        SELECT
+            m.session_id,
+            json_extract(m.data, '\$.finish') as finish,
+            json_extract(m.data, '\$.time.completed') as completed
+        FROM message m
+        INNER JOIN (
+            SELECT session_id, MAX(rowid) as max_rowid
+            FROM message
+            WHERE json_extract(data, '\$.role') = 'assistant'
+            GROUP BY session_id
+        ) lm ON m.session_id = lm.session_id AND m.rowid = lm.max_rowid
+        WHERE json_extract(m.data, '\$.role') = 'assistant'
+    ) last_asst ON last_asst.session_id = s.id
     WHERE s.parent_id IS NOT NULL
       AND s.time_created >= ${STARTUP_TS}
-      AND (${now_ms} - COALESCE(agg.last_msg_time, s.time_created)) < ${ACTIVE_THRESHOLD_MS}
+      AND NOT (last_asst.finish = 'stop' AND last_asst.completed IS NOT NULL)
+      AND (${now_ms} - COALESCE(agg.last_msg_time, s.time_created)) < ${SAFETY_TIMEOUT_MS}
     ORDER BY s.time_created ASC
 " --format tsv 2>/dev/null | tail -n +2)  # skip header
 
