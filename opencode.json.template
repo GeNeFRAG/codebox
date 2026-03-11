@@ -129,7 +129,7 @@
       "command": [
         "docker", "run", "-i", "--rm",
         "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
-        "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
+        "-e", "SSL_CERT_FILE=/certs/ca-bundle.pem",
         "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
         "-e", "GITHUB_HOST",
         "ghcr.io/github/github-mcp-server"
@@ -145,7 +145,7 @@
       "command": [
         "docker", "run", "-i", "--rm",
         "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
-        "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
+        "-e", "SSL_CERT_FILE=/certs/ca-bundle.pem",
         "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
         "-e", "GITHUB_HOST",
         "ghcr.io/github/github-mcp-server"
@@ -160,6 +160,8 @@
       "enabled": false,
       "command": [
         "docker", "run", "--rm", "-i",
+        "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
+        "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
         "-e", "CONFLUENCE_URL",
         "-e", "CONFLUENCE_USERNAME",
         "-e", "CONFLUENCE_PERSONAL_TOKEN",
