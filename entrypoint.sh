@@ -317,6 +317,19 @@ echo ""
 # lifecycles — avoids showing stale model/token data after a rebuild.
 date +%s%3N > /tmp/.opencode-startup-ts
 
+# ─── Initialize theme flag (dark by default, persists across reconnects) ─
+# OPENCODE_THEME env var allows setting initial theme via .env.
+# The flag file is read by status bar scripts and agent-monitor.sh.
+# COLORFGBG tells lipgloss (opencode's TUI library) whether the
+# terminal has a light or dark background, so it picks matching colors.
+_init_theme="${OPENCODE_THEME:-dark}"
+echo "$_init_theme" > /tmp/.tmux-theme
+if [ "$_init_theme" = "light" ]; then
+    export COLORFGBG="0;15"
+else
+    export COLORFGBG="15;0"
+fi
+
 # ─── Auto-detect browser tab title from Docker Compose service name ─
 # If OPENCODE_TITLE is not set, derive it from the Compose service label
 # (e.g. "my-project" → "OpenCode — my-project"). Requires Docker socket.
@@ -422,16 +435,34 @@ if [ "${OPENCODE_MODE}" = "tmux" ]; then
 TMUX_SESSION="opencode"
 
 if [ "${1:-}" = "--loop" ]; then
+    # Read theme at launch time (not just at container start) so that
+    # respawns after theme toggle pick up the new COLORFGBG value.
+    _theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
+    if [ "$_theme" = "light" ]; then
+        export COLORFGBG="0;15"
+    else
+        export COLORFGBG="15;0"
+    fi
     exec "${OPENCODE_BIN_PATH}" ${OPENCODE_EXTRA_ARGS}
 fi
 
 if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
     exec tmux -u attach -t "$TMUX_SESSION"
 else
+    # Apply initial theme to the outer terminal BEFORE creating the
+    # tmux session, so lipgloss detects the correct background.
+    _init_theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
+    if [ "$_init_theme" = "light" ]; then
+        printf '\e]10;#3760bf\a'    # OSC 10: foreground
+        printf '\e]11;#e1e2e7\a'    # OSC 11: background
+        printf '\e]12;#2e7de9\a'    # OSC 12: cursor
+    fi
+
     COLS=$(tput cols  2>/dev/null || echo 180)
     ROWS=$(tput lines 2>/dev/null || echo 50)
     tmux -u new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
         "/tmp/tmux-wrapper.sh --loop"
+    tmux source-file "/opt/opencode/tmux-theme-${_init_theme}.conf" 2>/dev/null
     exec tmux -u attach -t "$TMUX_SESSION"
 fi
 WRAPPER

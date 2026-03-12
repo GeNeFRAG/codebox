@@ -17,6 +17,16 @@ export TZ="${TZ:-UTC}"
 CACHE_FILE="/tmp/.session-status-cache"
 CACHE_TTL=30  # seconds — model/branch rarely change mid-conversation
 
+# ─── Theme colors (dark/light) ────────────────────────────────────
+_theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
+if [ "$_theme" = "light" ]; then
+    _sep="#8990b3"; _label="#2e7de9"; _branch="#587539"
+    _model="#7847bd"; _ctx="#8c6c3e"
+else
+    _sep="#565f89"; _label="#7aa2f7"; _branch="#9ece6a"
+    _model="#bb9af7"; _ctx="#e0af68"
+fi
+
 if [ -f "$CACHE_FILE" ]; then
     cache_age=$(( $(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) ))
     if [ "$cache_age" -lt "$CACHE_TTL" ]; then
@@ -73,8 +83,8 @@ fi
 # ─── Output ───────────────────────────────────────────────────────
 branch_segment=""
 if [ -n "$branch" ]; then
-    branch_segment="#[fg=#565f89]│#[fg=#9ece6a] ${branch} "
+    branch_segment="#[fg=${_sep}]│#[fg=${_branch}] ${branch} "
 fi
-output="#[fg=#7aa2f7,bold] opencode ${branch_segment}#[fg=#565f89]│#[fg=#bb9af7] ${model:-?} #[fg=#565f89]│#[fg=#e0af68] ${ctx_str} ctx "
+output="#[fg=${_label},bold] opencode ${branch_segment}#[fg=${_sep}]│#[fg=${_model}] ${model:-?} #[fg=${_sep}]│#[fg=${_ctx}] ${ctx_str} ctx "
 echo "$output" > "$CACHE_FILE"
 echo "$output"

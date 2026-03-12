@@ -20,17 +20,32 @@ POLL_INTERVAL=3        # seconds between DB polls
 SAFETY_TIMEOUT_MS=120000  # fallback: mark done if no messages for 2 min
 REPLAY_WINDOW_MS=300000   # 5 minutes — how far back to replay on startup
 
-# ─── Colors ───────────────────────────────────────────────────────
+# ─── Colors (theme-aware) ─────────────────────────────────────────
 RESET="\033[0m"
 BOLD="\033[1m"
 DIM="\033[2m"
-BLUE="\033[38;5;111m"
-GREEN="\033[38;5;114m"
-YELLOW="\033[38;5;215m"
-MAGENTA="\033[38;5;177m"
-CYAN="\033[38;5;80m"
-RED="\033[38;5;204m"
-GRAY="\033[38;5;243m"
+
+_theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
+if [ "$_theme" = "light" ]; then
+    # Tokyo Night Day — saturated colors that read well on light bg
+    BLUE="\033[38;5;33m"
+    GREEN="\033[38;5;28m"
+    YELLOW="\033[38;5;130m"
+    MAGENTA="\033[38;5;127m"
+    CYAN="\033[38;5;30m"
+    RED="\033[38;5;160m"
+    GRAY="\033[38;5;102m"
+else
+    # Tokyo Night — pastel colors for dark backgrounds
+    BLUE="\033[38;5;111m"
+    GREEN="\033[38;5;114m"
+    YELLOW="\033[38;5;215m"
+    MAGENTA="\033[38;5;177m"
+    CYAN="\033[38;5;80m"
+    RED="\033[38;5;204m"
+    GRAY="\033[38;5;243m"
+fi
+# NOTE: Theme is read at startup.  Toggle theme → restart monitor (prefix m m).
 
 # ─── Agent color map ─────────────────────────────────────────────
 _agent_color() {

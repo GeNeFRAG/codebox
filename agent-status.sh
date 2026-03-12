@@ -17,6 +17,14 @@ CACHE_FILE="/tmp/.agent-status-cache"
 CACHE_TTL_ACTIVE=5   # seconds — agents are running, refresh often
 CACHE_TTL_IDLE=30    # seconds — no agents, barely poll at all
 
+# ─── Theme colors (dark/light) ────────────────────────────────────
+_theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
+if [ "$_theme" = "light" ]; then
+    _count="#8c6c3e"; _sep="#8990b3"; _name="#3760bf"
+else
+    _count="#e0af68"; _sep="#565f89"; _name="#a9b1d6"
+fi
+
 if [ -f "$CACHE_FILE" ]; then
     cache_age=$(( $(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) ))
     cached=$(cat "$CACHE_FILE")
@@ -103,7 +111,7 @@ if [ "$count" -eq 0 ]; then
     output=""
 else
     name_list=$(echo "${!names[@]}" | tr ' ' '·')
-    output="#[fg=#e0af68,bold]${count}#[fg=#565f89] ⚡#[fg=#a9b1d6]${name_list}"
+    output="#[fg=${_count},bold]${count}#[fg=${_sep}] ⚡#[fg=${_name}]${name_list}"
 fi
 
 echo "$output" > "$CACHE_FILE"
