@@ -40,9 +40,8 @@ done
 # ─── 2. Source the new theme (status bar, borders, pane bg, COLORFGBG)
 tmux source-file "${THEME_DIR}/tmux-theme-${next}.conf"
 
-# ─── 3. Write theme flag + clear caches ──────────────────────────
+# ─── 3. Write theme flag ─────────────────────────────────────────
 echo "$next" > /tmp/.tmux-theme
-rm -f /tmp/.session-status-cache /tmp/.agent-status-cache
 
 # ─── 4. Respawn the opencode TUI pane ────────────────────────────
 # respawn-pane -k kills the running process AND restarts the pane's

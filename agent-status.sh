@@ -9,13 +9,7 @@
 #
 # Usage: bash /opt/opencode/agent-status.sh
 
-# ─── File-based cache (avoid spawning opencode db on every tmux refresh) ─
-# Adaptive TTL: when idle (empty result), poll infrequently (30s) since
-# nothing is changing.  When agents are active, poll frequently (5s) to
-# keep the status bar responsive.
-CACHE_FILE="/tmp/.agent-status-cache"
-CACHE_TTL_ACTIVE=5   # seconds — agents are running, refresh often
-CACHE_TTL_IDLE=30    # seconds — no agents, barely poll at all
+DB="/root/.local/share/opencode/opencode.db"
 
 # ─── Theme colors (dark/light) ────────────────────────────────────
 _theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
@@ -23,21 +17,6 @@ if [ "$_theme" = "light" ]; then
     _count="#8c6c3e"; _sep="#8990b3"; _name="#3760bf"
 else
     _count="#e0af68"; _sep="#565f89"; _name="#a9b1d6"
-fi
-
-if [ -f "$CACHE_FILE" ]; then
-    cache_age=$(( $(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) ))
-    cached=$(cat "$CACHE_FILE")
-    # Pick TTL based on whether the cached result shows active agents
-    if [ -n "$cached" ]; then
-        ttl=$CACHE_TTL_ACTIVE
-    else
-        ttl=$CACHE_TTL_IDLE
-    fi
-    if [ "$cache_age" -lt "$ttl" ]; then
-        echo "$cached"
-        exit 0
-    fi
 fi
 
 # A session is active if its last assistant message has NOT completed:
@@ -51,14 +30,14 @@ STARTUP_TS=$(cat /tmp/.opencode-startup-ts 2>/dev/null || echo "0")
 
 # Query active subagent sessions (only from current container lifecycle).
 # Uses a pre-aggregated subquery instead of correlated subqueries for speed.
-result=$(${OPENCODE_BIN_PATH:-opencode} db "
+result=$(sqlite3 -separator $'\t' "$DB" "
     SELECT
         COALESCE(first_msg.agent, 'unknown') as agent
     FROM session s
     LEFT JOIN (
         SELECT
             m.session_id,
-            json_extract(m.data, '\$.agent') as agent
+            json_extract(m.data, '$.agent') as agent
         FROM message m
         INNER JOIN (
             SELECT session_id, MIN(rowid) as min_rowid
@@ -74,27 +53,26 @@ result=$(${OPENCODE_BIN_PATH:-opencode} db "
     LEFT JOIN (
         SELECT
             m.session_id,
-            json_extract(m.data, '\$.finish') as finish,
-            json_extract(m.data, '\$.time.completed') as completed
+            json_extract(m.data, '$.finish') as finish,
+            json_extract(m.data, '$.time.completed') as completed
         FROM message m
         INNER JOIN (
             SELECT session_id, MAX(rowid) as max_rowid
             FROM message
-            WHERE json_extract(data, '\$.role') = 'assistant'
+            WHERE json_extract(data, '$.role') = 'assistant'
             GROUP BY session_id
         ) lm ON m.session_id = lm.session_id AND m.rowid = lm.max_rowid
-        WHERE json_extract(m.data, '\$.role') = 'assistant'
+        WHERE json_extract(m.data, '$.role') = 'assistant'
     ) last_asst ON last_asst.session_id = s.id
     WHERE s.parent_id IS NOT NULL
       AND s.time_created >= ${STARTUP_TS}
       AND NOT (last_asst.finish = 'stop' AND last_asst.completed IS NOT NULL)
       AND (${now_ms} - COALESCE(agg.last_msg_time, s.time_created)) < ${SAFETY_TIMEOUT_MS}
     ORDER BY s.time_created ASC
-" --format tsv 2>/dev/null | tail -n +2)  # skip header
+" 2>/dev/null)
 
 if [ -z "$result" ]; then
-    echo "" > "$CACHE_FILE"
-    cat "$CACHE_FILE"
+    echo ""
     exit 0
 fi
 
@@ -114,5 +92,4 @@ else
     output="#[fg=${_count},bold]${count}#[fg=${_sep}] ⚡#[fg=${_name}]${name_list}"
 fi
 
-echo "$output" > "$CACHE_FILE"
 echo "$output"

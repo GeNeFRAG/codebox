@@ -84,6 +84,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tini \
         tmux \
         python3 \
+        sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # ─── Docker CLI only (static binary, ~50 MB vs ~250 MB docker.io) ──

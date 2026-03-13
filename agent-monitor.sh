@@ -20,6 +20,8 @@ POLL_INTERVAL=3        # seconds between DB polls
 SAFETY_TIMEOUT_MS=120000  # fallback: mark done if no messages for 2 min
 REPLAY_WINDOW_MS=300000   # 5 minutes — how far back to replay on startup
 
+DB="/root/.local/share/opencode/opencode.db"
+
 # ─── Colors (theme-aware) ─────────────────────────────────────────
 RESET="\033[0m"
 BOLD="\033[1m"
@@ -105,7 +107,7 @@ _print_header() {
 _query_subagents() {
     local startup_ts
     startup_ts=$(cat /tmp/.opencode-startup-ts 2>/dev/null || echo "0")
-    opencode db "
+    sqlite3 -separator $'\t' "$DB" "
         SELECT
             s.id,
             COALESCE(first_msg.agent, 'unknown') as agent,
@@ -120,8 +122,8 @@ _query_subagents() {
         LEFT JOIN (
             SELECT
                 m.session_id,
-                json_extract(m.data, '\$.agent') as agent,
-                json_extract(m.data, '\$.model.modelID') as model
+                json_extract(m.data, '$.agent') as agent,
+                json_extract(m.data, '$.model.modelID') as model
             FROM message m
             INNER JOIN (
                 SELECT session_id, MIN(rowid) as min_rowid
@@ -140,37 +142,37 @@ _query_subagents() {
         LEFT JOIN (
             SELECT
                 m.session_id,
-                json_extract(m.data, '\$.finish') as finish,
-                json_extract(m.data, '\$.error.name') as error_name,
-                json_extract(m.data, '\$.time.completed') as completed
+                json_extract(m.data, '$.finish') as finish,
+                json_extract(m.data, '$.error.name') as error_name,
+                json_extract(m.data, '$.time.completed') as completed
             FROM message m
             INNER JOIN (
                 SELECT session_id, MAX(rowid) as max_rowid
                 FROM message
-                WHERE json_extract(data, '\$.role') = 'assistant'
+                WHERE json_extract(data, '$.role') = 'assistant'
                 GROUP BY session_id
             ) lm ON m.session_id = lm.session_id AND m.rowid = lm.max_rowid
-            WHERE json_extract(m.data, '\$.role') = 'assistant'
+            WHERE json_extract(m.data, '$.role') = 'assistant'
         ) last_asst ON last_asst.session_id = s.id
         WHERE s.parent_id IS NOT NULL
           AND s.time_created >= ${startup_ts}
         ORDER BY s.time_created ASC
-    " --format tsv 2>/dev/null | tail -n +2  # skip header
+    " 2>/dev/null
 }
 
 # ─── Query token usage for a completed session ───────────────────
 # Returns TSV: total_input  total_output  total_cache_read
 _query_tokens() {
     local sid="$1"
-    opencode db "
+    sqlite3 -separator $'\t' "$DB" "
         SELECT
-            COALESCE(SUM(json_extract(data, '\$.tokens.input')), 0),
-            COALESCE(SUM(json_extract(data, '\$.tokens.output')), 0),
-            COALESCE(SUM(json_extract(data, '\$.tokens.cache.read')), 0)
+            COALESCE(SUM(json_extract(data, '$.tokens.input')), 0),
+            COALESCE(SUM(json_extract(data, '$.tokens.output')), 0),
+            COALESCE(SUM(json_extract(data, '$.tokens.cache.read')), 0)
         FROM message
         WHERE session_id = '${sid}'
-          AND json_extract(data, '\$.role') = 'assistant'
-    " --format tsv 2>/dev/null | tail -n +2 | head -1
+          AND json_extract(data, '$.role') = 'assistant'
+    " 2>/dev/null
 }
 
 # ─── Format token count to human-readable (e.g. 1.2k, 45.3k) ────
@@ -243,7 +245,7 @@ main() {
     local db_ok=false
     for attempt in 1 2 3 4 5; do
         local db_test
-        db_test=$(opencode db "SELECT COUNT(*) FROM session" --format tsv 2>&1 | tail -n +2 | head -1)
+        db_test=$(sqlite3 "$DB" "SELECT COUNT(*) FROM session" 2>&1)
         if [ -n "$db_test" ] && [[ "$db_test" != *"error"* ]] && [[ "$db_test" != *"Error"* ]]; then
             db_ok=true
             break
