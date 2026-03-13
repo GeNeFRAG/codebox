@@ -483,6 +483,7 @@ WRAPPER
             --interface 0.0.0.0 \
             --writable \
             -t titleFixed="${OPENCODE_TITLE:-OpenCode (tmux)}" \
+            -t allowProposedApi=true \
             ${OPENCODE_TUI_ARGS:-} \
             /tmp/tmux-wrapper.sh
         _rc=$?
@@ -509,6 +510,7 @@ elif [ "${OPENCODE_MODE}" = "tui" ]; then
             --writable \
             --cwd /workspace \
             -t titleFixed="${OPENCODE_TITLE:-OpenCode (tui)}" \
+            -t allowProposedApi=true \
             ${OPENCODE_TUI_ARGS:-} \
             "${OPENCODE_BIN_PATH}" ${OPENCODE_EXTRA_ARGS:-}
         _rc=$?
