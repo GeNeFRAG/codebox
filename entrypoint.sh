@@ -613,7 +613,14 @@ if [ "${1:-}" = "--loop" ]; then
     else
         export COLORFGBG="15;0"
     fi
-    exec "${APP_BIN}" ${OPENCODE_EXTRA_ARGS}
+    # On respawn (pane-died), pass --continue to resume the last session
+    # instead of starting a new one. Only applies to OpenCode (Claude Code
+    # manages its own session state and does not support this flag).
+    _continue_flag=""
+    if [ "${OPENCODE_APP:-opencode}" = "opencode" ] && [ "${2:-}" = "--respawn" ]; then
+        _continue_flag="--continue"
+    fi
+    exec "${APP_BIN}" ${_continue_flag} ${OPENCODE_EXTRA_ARGS}
 fi
 
 if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
