@@ -123,7 +123,7 @@
     "oh-my-opencode-slim"
   ],
   "mcp": {
-    "github": {
+    "github_rbi": {
       "type": "local",
       "enabled": false,
       "command": [
@@ -236,13 +236,6 @@
       "enabled": false,
       "command": [
         "playwright-mcp"
-      ]
-    },
-    "git": {
-      "type": "local",
-      "enabled": false,
-      "command": [
-        "git-mcp-server"
       ]
     }
   }

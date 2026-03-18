@@ -86,10 +86,9 @@ _generate_claude_code_config() {
     local settings_file="${settings_dir}/settings.json"
 
     # 1. Generate MCP config from template
-    # Note: plain cp (not envsubst) — template has no ${VAR} placeholders.
-    # If variables are ever added, switch to envsubst.
     if [ -f "${mcp_template}" ]; then
-        cp "${mcp_template}" "${mcp_config}"
+        envsubst '${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}' \
+            < "${mcp_template}" > "${mcp_config}"
         chmod 600 "${mcp_config}"
         echo "  ✓ Claude Code MCP config written to ${mcp_config}"
     else
