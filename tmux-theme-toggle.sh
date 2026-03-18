@@ -11,7 +11,7 @@
 #   4. opencode TUI pane is respawned so lipgloss re-detects background
 #   5. Status bar script caches are cleared for immediate color update
 
-THEME_DIR="/opt/opencode"
+THEME_DIR="${TMUX_THEME_DIR:-/opt/opencode}"
 
 # Read current theme from tmux (defaults to "dark" if not set)
 current=$(tmux show-option -gqv @theme 2>/dev/null)

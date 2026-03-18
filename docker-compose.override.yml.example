@@ -128,6 +128,46 @@ services:
   #     - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
   #     - ${HOST_AUTH_JSON:-.docker/empty-file}:/opt/opencode/host-auth.json:ro
 
+  # ─────────────────────────────────────────────────────────────
+  # Example: Claude Code on my-project — http://localhost:3004
+  #
+  # Uses Anthropic Claude Code instead of OpenCode.
+  # Requires: ANTHROPIC_API_KEY (or LLM_API_KEY as fallback) in .env.
+  # Note: OAuth login does NOT work in headless Docker — API key required.
+  #
+  # ⚠ After upgrading claude-code version and rebuilding, run:
+  #   docker volume rm claude-code-data-my-project
+  #   if you encounter compatibility issues with stale session data.
+  # ─────────────────────────────────────────────────────────────
+  # claude-code-my-project:
+  #   extends:
+  #     file: docker-compose.yml
+  #     service: opencode-docker
+  #   container_name: claude-code-my-project
+  #   ports:
+  #     !override
+  #     - "3004:3004"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3004/"]
+  #   environment:
+  #     !override
+  #     - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
+  #     - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
+  #     - OPENCODE_APP=claude-code
+  #     - OPENCODE_MODE=tmux
+  #     - OPENCODE_PORT=3004
+  #   volumes:
+  #     !override
+  #     - ${REPOS_PATH:-~/repos}/my-project:/workspace
+  #     - claude-code-data-my-project:/root/.claude
+  #     - opencode-memory-claude-my-project:/root/.config/opencode/memory
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - ./.env:/opt/opencode/.env:ro
+  #     - ${HOME}/.ssh:/root/.ssh:ro
+  #     - ${HOME}/.gitconfig:/root/.gitconfig:ro
+  #     - ${GIT_CREDENTIALS_PATH:-.docker/empty-file}:/root/.git-credentials:ro
+  #     - ${CA_CERT_PATH:-.docker/empty-file}:/certs/ca-bundle.pem:ro
+
 volumes:
   opencode-data-my-project:
     name: opencode-data-my-project
@@ -141,3 +181,7 @@ volumes:
   #   name: opencode-data-fullstack
   # opencode-memory-fullstack:
   #   name: opencode-memory-fullstack
+  # claude-code-data-my-project:
+  #   name: claude-code-data-my-project
+  # opencode-memory-claude-my-project:
+  #   name: opencode-memory-claude-my-project

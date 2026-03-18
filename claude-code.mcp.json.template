@@ -1,0 +1,37 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "mcp-server-memory",
+      "args": [],
+      "env": {
+        "MEMORY_FILE_PATH": "/root/.config/opencode/memory/memory.json"
+      }
+    },
+    "context7": {
+      "command": "context7-mcp",
+      "args": []
+    },
+    "sequential-thinking": {
+      "command": "mcp-server-sequential-thinking",
+      "args": []
+    },
+    "time": {
+      "command": "mcp-time-server",
+      "args": []
+    },
+    "websearch": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp"
+    },
+    "playwright": {
+      "command": "playwright-mcp",
+      "args": [],
+      "disabled": true
+    },
+    "git": {
+      "command": "git-mcp-server",
+      "args": [],
+      "disabled": true
+    }
+  }
+}

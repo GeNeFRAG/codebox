@@ -21,6 +21,9 @@ x-opencode-common: &opencode-common
     - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
     - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
     - OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1
+    # ─── Coding Agent Selection ─────────────────────────────────
+    # OPENCODE_APP: opencode (default) or claude-code
+    # Set in .env — see .env.example for details.
   volumes: &opencode-volumes
     # ─── Docker socket (for MCP containers) ───────────────────
     - /var/run/docker.sock:/var/run/docker.sock
@@ -93,6 +96,15 @@ volumes:
     name: opencode-data-self
   opencode-memory-self:
     name: opencode-memory-self
+  # Claude Code session/settings volume — only mounted when OPENCODE_APP=claude-code.
+  # ⚠ IMPORTANT: You MUST add `- claude-code-data-self:/root/.claude` to the
+  #   service's volumes in docker-compose.override.yml to persist Claude Code
+  #   session data. Without this mount, data is lost on `docker compose down`.
+  # See docker-compose.override.yml.example for usage.
+  # ⚠ After upgrading claude-code version, run: docker volume rm claude-code-data-self
+  #   if you encounter compatibility issues with stale session data.
+  claude-code-data-self:
+    name: claude-code-data-self
 
 secrets:
   ca-cert:

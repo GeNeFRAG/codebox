@@ -27,6 +27,11 @@ ARG OPENCODE_VERSION=latest
 ARG CACHEBUST_OPENCODE=0
 RUN npm install -g opencode-ai@${OPENCODE_VERSION}
 
+# Install Claude Code globally
+ARG CLAUDE_CODE_VERSION=latest
+ARG CACHEBUST_CLAUDE_CODE=0
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+
 # Install provider SDKs, plugins, and oh-my-opencode-slim
 RUN mkdir -p /root/.config/opencode && \
     echo '{"dependencies":{"@ai-sdk/openai-compatible":"latest","@ai-sdk/groq":"^3.0.24","@opencode-ai/plugin":"latest","@openrouter/ai-sdk-provider":"^2.2.3","oh-my-opencode-slim":"latest"}}' \
@@ -122,6 +127,7 @@ COPY oh-my-opencode-slim.json.example /root/.config/opencode/oh-my-opencode-slim
 RUN cp /usr/local/lib/node_modules/opencode-ai/bin/.opencode /usr/local/bin/opencode-go && \
     chmod +x /usr/local/bin/opencode-go && \
     ln -sf /usr/local/lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode && \
+    ln -sf /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js /usr/local/bin/claude && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-memory/dist/index.js /usr/local/bin/mcp-server-memory && \
     ln -sf ../lib/node_modules/@upstash/context7-mcp/dist/index.js /usr/local/bin/context7-mcp && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js /usr/local/bin/mcp-server-sequential-thinking && \
@@ -133,7 +139,8 @@ RUN cp /usr/local/lib/node_modules/opencode-ai/bin/.opencode /usr/local/bin/open
 RUN mkdir -p /workspace \
     /root/.local/share/opencode \
     /root/.config/opencode/skills \
-    /root/.agents/skills
+    /root/.agents/skills \
+    /root/.claude
 
 WORKDIR /workspace
 
@@ -152,17 +159,20 @@ COPY tmux-theme-light.conf /opt/opencode/tmux-theme-light.conf
 # ─── Entrypoint and config ────────────────────────────────────────
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY opencode.json.template /opt/opencode/opencode.json.template
+COPY claude-code.mcp.json.template /opt/opencode/claude-code.mcp.json.template
 COPY prefill-proxy.mjs /opt/opencode/prefill-proxy.mjs
 COPY agent-monitor.sh /opt/opencode/agent-monitor.sh
 COPY agent-monitor-toggle.sh /opt/opencode/agent-monitor-toggle.sh
 COPY agent-status.sh /opt/opencode/agent-status.sh
 COPY session-status.sh /opt/opencode/session-status.sh
+COPY session-status-claude.sh /opt/opencode/session-status-claude.sh
 COPY tmux-theme-toggle.sh /opt/opencode/tmux-theme-toggle.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     /opt/opencode/agent-monitor.sh \
     /opt/opencode/agent-monitor-toggle.sh \
     /opt/opencode/agent-status.sh \
     /opt/opencode/session-status.sh \
+    /opt/opencode/session-status-claude.sh \
     /opt/opencode/tmux-theme-toggle.sh
 
 # Port is set at runtime via OPENCODE_PORT (default 3000)
