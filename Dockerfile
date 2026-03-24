@@ -27,10 +27,10 @@ ARG OPENCODE_VERSION=latest
 ARG CACHEBUST_OPENCODE=0
 RUN npm install -g opencode-ai@${OPENCODE_VERSION}
 
-# Install Claude Code natively (npm install is deprecated)
+# Install Claude Code globally
 ARG CLAUDE_CODE_VERSION=latest
 ARG CACHEBUST_CLAUDE_CODE=0
-RUN curl -fsSL https://claude.ai/install.sh | bash -s -- ${CLAUDE_CODE_VERSION}
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Install provider SDKs, plugins, and oh-my-opencode-slim
 RUN mkdir -p /root/.config/opencode && \
@@ -114,7 +114,6 @@ COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=builder /root/.config/opencode/node_modules /root/.config/opencode/node_modules
 COPY --from=builder /root/.config/opencode/package.json /root/.config/opencode/package.json
 COPY --from=builder /root/.npm /root/.npm
-COPY --from=builder /root/.local/bin/claude /usr/local/bin/claude
 
 # ─── Plugin config (oh-my-opencode-slim) ───────────────────────────
 # Baked into the image; override at runtime via docker-compose volume mount.
@@ -128,6 +127,7 @@ COPY oh-my-opencode-slim.json.example /root/.config/opencode/oh-my-opencode-slim
 RUN cp /usr/local/lib/node_modules/opencode-ai/bin/.opencode /usr/local/bin/opencode-go && \
     chmod +x /usr/local/bin/opencode-go && \
     ln -sf /usr/local/lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode && \
+    ln -sf /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js /usr/local/bin/claude && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-memory/dist/index.js /usr/local/bin/mcp-server-memory && \
     ln -sf ../lib/node_modules/@upstash/context7-mcp/dist/index.js /usr/local/bin/context7-mcp && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js /usr/local/bin/mcp-server-sequential-thinking && \
