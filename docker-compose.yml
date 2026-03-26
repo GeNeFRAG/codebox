@@ -31,6 +31,7 @@ x-opencode-common: &opencode-common
     - ${HOME}/.ssh:/root/.ssh:ro
     - ${HOME}/.gitconfig:/root/.gitconfig:ro
     - ${GIT_CREDENTIALS_PATH:-.docker/empty-file}:/root/.git-credentials:ro
+    - ${GIT_CONFIG_WORK_PATH:-.docker/empty-file}:/root/.gitconfig-work:ro
     # ─── GitHub Copilot auth (reuse host token) ────────────────
     - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
     # ─── Host auth.json (merged at startup for Copilot etc.) ──
@@ -83,6 +84,7 @@ services:
       - ${HOME}/.ssh:/root/.ssh:ro
       - ${HOME}/.gitconfig:/root/.gitconfig:ro
       - ${GIT_CREDENTIALS_PATH:-.docker/empty-file}:/root/.git-credentials:ro
+      - ${GIT_CONFIG_WORK_PATH:-.docker/empty-file}:/root/.gitconfig-work:ro
       # ─── GitHub Copilot auth (reuse host token) ────────────────
       - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
       # ─── Host auth.json (merged at startup for Copilot etc.) ──

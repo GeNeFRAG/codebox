@@ -362,6 +362,15 @@ elif [ -f "${GIT_CRED}" ] && [ -s "${GIT_CRED}" ]; then
     echo "  ✓ Git credentials available (HTTPS push supported)"
 fi
 
+# Validate .gitconfig-work mount (optional secondary git identity)
+GIT_WORK="/root/.gitconfig-work"
+if [ -d "${GIT_WORK}" ]; then
+    echo "  ⚠ ${GIT_WORK} is a directory (host file missing?) — work git identity unavailable"
+    echo "    Set GIT_CONFIG_WORK_PATH in .env to your work config file, or leave unset to disable"
+elif [ -f "${GIT_WORK}" ] && [ -s "${GIT_WORK}" ]; then
+    echo "  ✓ Git work config mounted (conditional identity active)"
+fi
+
 # ─── Expose /workspace under $HOME for "Open project" dialog ──────
 # The web UI searches $HOME for project directories. Inside Docker,
 # /root only has dotfiles which are filtered out, so the dialog is

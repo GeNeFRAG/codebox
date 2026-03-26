@@ -313,6 +313,7 @@ When running Claude Code in `tmux` mode, the status bar uses a simplified displa
 | `PROXY_LOG_LEVEL` | Prefill proxy verbosity: `debug` / `info` (default) / `warn` / `error` |
 | `DOCKER_NETWORK_MODE` | Set to `host` on Linux to bypass Docker bridge NAT (~70-80ms savings). Not supported on Docker Desktop. |
 | `GIT_CREDENTIALS_PATH` | Host path to `.git-credentials` for HTTPS push (default: disabled) |
+| `GIT_CONFIG_WORK_PATH` | Host path to a secondary `.gitconfig-work` for work git identity — see [Git Multi-Account](#git-multi-account) (default: disabled) |
 | `HOST_AUTH_JSON` | Host path to `auth.json` for Copilot tokens etc. (default: disabled) |
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `GITHUB_ENTERPRISE_TOKEN` | GitHub Enterprise PAT |
@@ -425,6 +426,37 @@ Disable with `"fallback": { "enabled": false }`.
 
 </details>
 
+## Git Multi-Account
+
+If you use different git identities for personal and work repos (e.g. `github.com` vs a corporate GitHub Enterprise), you can mount a secondary `.gitconfig-work` with the work identity. Git's [conditional includes](https://git-scm.com/docs/git-config#_conditional_includes) automatically switch based on the repo's remote URL.
+
+**1.** Add the conditional include to your `~/.gitconfig`:
+
+```gitconfig
+[user]
+    email = you@personal.com
+    name = YourName
+
+[includeIf "hasconfig:remote.*.url:https://code.yourcompany.com/**"]
+    path = .gitconfig-work
+```
+
+**2.** Create `~/.gitconfig-work`:
+
+```gitconfig
+[user]
+    email = you@yourcompany.com
+    name = YourWorkHandle
+```
+
+**3.** Set in `.env`:
+
+```bash
+GIT_CONFIG_WORK_PATH=~/.gitconfig-work
+```
+
+That's it — repos with remotes pointing to `code.yourcompany.com` will commit with the work identity; everything else uses the default. If `GIT_CONFIG_WORK_PATH` is not set, an empty file is mounted and the conditional include does nothing.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -466,8 +498,9 @@ When a container starts, `entrypoint.sh` runs these steps:
 4. **Docker socket check** — Verifies `/var/run/docker.sock` for MCP containers
 5. **Git safe.directory** — Exports `GIT_CONFIG_*` env vars to mark `/workspace` (and sub-repos) as safe
 6. **Git credentials check** — Validates `.git-credentials` mount
-7. **Workspace symlink** — Symlinks `/workspace` into `$HOME` for project discovery
-8. **Mode selection** — Reads `OPENCODE_MODE` (default `web`):
+7. **Git work config check** — Validates `.gitconfig-work` mount (optional secondary identity)
+8. **Workspace symlink** — Symlinks `/workspace` into `$HOME` for project discovery
+9. **Mode selection** — Reads `OPENCODE_MODE` (default `web`):
     - `web` — starts `opencode web` in a restart loop on `0.0.0.0:${OPENCODE_PORT:-3000}` (OpenCode only — fails for Claude Code)
     - `tui` — starts `ttyd` serving the agent TUI directly in a restart loop on the same port
     - `tmux` — creates a tmux session (`opencode`) running the TUI in a restart loop, then starts `ttyd` serving `tmux attach` on the same port. Browser opens a full xterm.js terminal with tmux; `docker exec` can also attach to the same session.
@@ -526,6 +559,7 @@ Multi-stage build for minimal image size:
 | `/root/.config/opencode/memory` | MCP memory persistence (both agents) |
 | `/root/.ssh` | SSH keys for git (ro) |
 | `/root/.gitconfig` | Git config (ro) |
+| `/root/.gitconfig-work` | Secondary git config for work identity (ro, optional) |
 | `/root/.git-credentials` | Git credentials (ro) |
 | `/root/.config/github-copilot` | GitHub Copilot auth reuse from host (ro) |
 | `/opt/opencode/host-auth.json` | Host auth.json for provider merge at startup (OpenCode only, ro) |
