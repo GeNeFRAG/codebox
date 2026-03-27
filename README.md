@@ -1,6 +1,6 @@
 # OpenCode — Docker
 
-Run [OpenCode](https://github.com/opencode-ai/opencode) or [Claude Code](https://github.com/anthropics/claude-code) — AI coding agents — entirely inside Docker, accessible from any browser. No local Node.js, no CLI install, no environment clutter. Pick a UI mode, point it at your LLM provider or API key, and open `localhost:3000`. Run multiple repos side-by-side — each gets its own container, port, and data volumes.
+Run [OpenCode](https://github.com/opencode-ai/opencode) or [Claude Code](https://github.com/anthropics/claude-code) — AI coding agents — entirely inside Docker, accessible from any browser. No local Node.js, no CLI install, no environment clutter. Pick a UI mode, point it at your LLM provider, supply an API key, and open `localhost:3000`. Run multiple repos side-by-side — each gets its own container, port, and data volumes.
 
 **Coding agent** (set `OPENCODE_APP` in `.env`):
 
@@ -14,8 +14,13 @@ Run [OpenCode](https://github.com/opencode-ai/opencode) or [Claude Code](https:/
 | Mode | Set in `.env` | What you get |
 |------|--------------|--------------|
 | **web** (default) | `OPENCODE_MODE=web` | OpenCode's built-in browser UI (OpenCode only) |
-| **tui** | `OPENCODE_MODE=tui` | The full terminal UI rendered in the browser via [ttyd](https://github.com/tsl0922/ttyd) / xterm.js — identical to running the agent in a local terminal |
-| **tmux** | `OPENCODE_MODE=tmux` | Same terminal UI, but wrapped in a persistent [tmux](https://github.com/tmux/tmux) session — survives browser disconnects, supports pane splitting, shell access alongside the agent, and a built-in agent activity monitor |
+| **tui** | `OPENCODE_MODE=tui` | The full terminal UI, rendered in the browser via [ttyd](https://github.com/tsl0922/ttyd) / xterm.js — identical to running the agent in a local terminal |
+| **tmux** | `OPENCODE_MODE=tmux` | Same terminal UI, wrapped in a persistent [tmux](https://github.com/tmux/tmux) session — survives browser disconnects, supports pane splitting, shell access alongside the agent, and a built-in agent activity monitor |
+
+## Prerequisites
+
+- [Docker Engine](https://docs.docker.com/engine/install/) 24+ and [Docker Compose](https://docs.docker.com/compose/install/) v2.24+
+- An API key for your LLM provider
 
 ## Quick Start
 
@@ -42,6 +47,178 @@ open http://localhost:3000
 > **Note:** Claude.ai OAuth login does **not** work in headless Docker. You must provide `ANTHROPIC_API_KEY` (or `LLM_API_KEY` as a fallback).
 
 > **Corporate proxy?** Copy your CA bundle to `./ca-bundle.pem` and set `CA_CERT_PATH` in `.env`.
+
+## CLI (`opencode-web.sh`)
+
+```bash
+./opencode-web.sh start   [service]   # Build & start (all or one)
+./opencode-web.sh stop    [service]   # Stop
+./opencode-web.sh restart [service]   # Restart
+./opencode-web.sh logs    [service]   # Follow logs
+./opencode-web.sh shell   [service]   # Bash into container
+./opencode-web.sh rebuild [service]   # Force rebuild & start
+./opencode-web.sh nuke    [service]   # Rebuild with latest opencode-ai
+./opencode-web.sh version [service]   # Show opencode-ai version in container
+./opencode-web.sh status              # Show all services
+./opencode-web.sh urls                # Show running URLs/ports
+./opencode-web.sh down                # Stop & remove all containers
+```
+
+## UI Modes
+
+### web (default)
+
+Nothing to configure — `./opencode-web.sh start` launches OpenCode's browser UI on port 3000. This is the standard graphical interface with file trees, conversation panels, and tool output.
+
+### tui — terminal UI in the browser
+
+Set `OPENCODE_MODE=tui` in `.env` to run OpenCode's terminal interface. It's served in the browser via [ttyd](https://github.com/tsl0922/ttyd) — you see a full xterm.js terminal running `opencode`, exactly as it would look in a local terminal. Useful if you prefer the keyboard-driven TUI or want a lighter-weight experience.
+
+```bash
+# .env
+OPENCODE_MODE=tui
+```
+
+Start normally — the same URL now opens a terminal:
+
+```bash
+./opencode-web.sh start
+open http://localhost:3000
+```
+
+Switch back at any time by removing the variable or setting `OPENCODE_MODE=web`.
+
+> **Per-service:** You can mix modes across repos — set `OPENCODE_MODE` in the `environment:` block of any service in `docker-compose.override.yml`.
+
+### tmux — persistent terminal UI
+
+`OPENCODE_MODE=tmux` wraps the TUI in a persistent tmux session. It provides the same terminal UI as `tui` mode, with these additions:
+
+| | tui | tmux |
+|---|-----|------|
+| **Session persistence** | Closing the browser tab kills opencode | Session survives — reopening the URL reattaches instantly |
+| **Pane splitting** | Single pane only | Split panes to run shells alongside opencode |
+| **Shell access from host** | Not possible | `docker exec -it <container> tmux attach -t opencode` |
+| **Scrollback** | Browser-managed | 50,000 lines, vi keys, mouse scroll |
+| **Agent monitor** | Not available | Built-in status bar + live monitor pane showing subagent activity |
+
+```bash
+# .env
+OPENCODE_MODE=tmux
+```
+
+The tmux prefix is **Ctrl-Space** (instead of the usual Ctrl-b). Key bindings:
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-Space \|` | Split pane vertically |
+| `Ctrl-Space -` | Split pane horizontally |
+| `Ctrl-Space h/j/k/l` | Navigate panes (vim-style) |
+| `Ctrl-Space H/J/K/L` | Resize panes (5 cells, repeatable) |
+| `Ctrl-Space Ctrl-Space` | Cycle to next pane |
+| `Ctrl-Space c` | New window |
+| `Ctrl-Space Enter` | Enter copy/scroll mode (vi keys) |
+| `Ctrl-Space r` | Reload tmux config |
+| `Option-m` | Toggle agent monitor pane (25% height, bottom) |
+| `Option-Shift-m` | Agent monitor fullscreen window |
+| `Option-s` | Toggle status bar |
+
+> **Note:** The `Ctrl-Space` prefix is intercepted by most browsers and ttyd, so the `m`/`M`/`s` monitor bindings use `Option-` root keys instead (no prefix needed). The pane/window bindings above work because `Ctrl-Space` + a letter typically passes through.
+
+#### Agent monitor
+
+The **status bar** shows session info on the left (`opencode │ branch │ model │ context-size`) and active subagent activity on the right (e.g. `2 ⚡explorer·fixer`) plus the local time. Press `Option-m` (or `Ctrl-Space m`) to open a live monitor pane at the bottom of the screen — it polls the SQLite DB and shows a color-coded feed of subagent lifecycle events: `▶ agent started` (with model name and timestamp) and `■ agent done` (with duration and token usage: in/out/cache). Press `Option-Shift-m` (or `Ctrl-Space M`) to open the same feed in a dedicated tmux window instead.
+
+#### Custom tmux config
+
+Mount your own `tmux.conf` to override the defaults:
+
+```yaml
+# docker-compose.override.yml
+services:
+  my-project:
+    volumes:
+      - ./my-tmux.conf:/root/.config/opencode/tmux.conf:ro
+```
+
+If `/root/.config/opencode/tmux.conf` exists, it replaces the built-in config at startup. The built-in config uses `xterm-256color` as the terminal type and enables true-color and RGB passthrough so the opencode TUI renders identically in tmux mode and plain tui mode.
+
+## Claude Code Mode
+
+Set `OPENCODE_APP=claude-code` in `.env` to run [Anthropic Claude Code](https://github.com/anthropics/claude-code) instead of OpenCode. The same Docker image supports both — the entrypoint detects `OPENCODE_APP` at startup and configures the correct agent.
+
+### Key differences from OpenCode
+
+| | OpenCode | Claude Code |
+|---|---------|-------------|
+| **UI modes** | `web`, `tui`, `tmux` | `tui`, `tmux` only (no web mode) |
+| **API key** | `LLM_API_KEY` | `ANTHROPIC_API_KEY` (falls back to `LLM_API_KEY`) |
+| **Custom endpoint** | `LLM_BASE_URL` | `ANTHROPIC_BASE_URL` (falls back to `LLM_BASE_URL`) |
+| **Prefill proxy** | ✅ Enabled | ✗ Not used |
+| **Model fallback** | ✅ `OPENCODE_MODEL_FALLBACK` | ✗ Not applicable |
+| **Agent monitor** | ✅ tmux status bar + pane | ✗ Not available |
+| **Data volume** | `/root/.local/share/opencode` | `/root/.claude` |
+| **MCP servers** | Configured via `opencode.json` | Configured via `claude-code-mcp.json` |
+
+### Setup
+
+Follow the [Quick Start](#quick-start) steps, setting these values in `.env`:
+
+```bash
+OPENCODE_APP=claude-code
+OPENCODE_MODE=tmux        # or tui — web mode is not supported
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+For multi-repo setups, add the Claude Code data volume to your service in `docker-compose.override.yml`:
+
+```yaml
+services:
+  my-project:
+    environment:
+      !override
+      - OPENCODE_APP=claude-code
+      - OPENCODE_MODE=tmux
+      - OPENCODE_PORT=3004
+    volumes:
+      !override
+      - ${REPOS_PATH:-~/repos}/my-project:/workspace
+      - claude-code-data-my-project:/root/.claude
+      - opencode-memory-claude-my-project:/root/.config/opencode/memory
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./.env:/opt/opencode/.env:ro
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${HOME}/.gitconfig:/root/.gitconfig:ro
+
+volumes:
+  claude-code-data-my-project:
+    name: claude-code-data-my-project
+  opencode-memory-claude-my-project:
+    name: opencode-memory-claude-my-project
+```
+
+> **Note:** Always mount a named volume to `/root/.claude` — this persists Claude Code's session data, settings, and memory across container restarts. Without it, all session data is lost on `docker compose down`.
+
+> **Upgrading Claude Code?** After rebuilding the image, run `docker volume rm claude-code-data-my-project` if you encounter compatibility issues with stale session data.
+
+### Authentication
+
+The entrypoint automatically configures authentication at startup:
+
+- `ANTHROPIC_API_KEY` is used directly if set
+- Otherwise `LLM_API_KEY` is mapped to `ANTHROPIC_API_KEY`
+- `ANTHROPIC_BASE_URL` is used if set (for custom or proxy endpoints)
+- Otherwise `LLM_BASE_URL` is mapped to `ANTHROPIC_BASE_URL`
+
+The interactive onboarding wizard, API key approval prompt, and workspace trust dialog are all pre-seeded — the TUI starts directly without interactive prompts.
+
+### MCP servers in Claude Code mode
+
+The same MCP servers listed in [MCP Servers](#mcp-servers) are pre-configured for Claude Code via `/opt/opencode/claude-code-mcp.json.template`. `playwright` and `git` are disabled by default; the rest are enabled.
+
+### tmux adaptations for Claude Code
+
+When running Claude Code in `tmux` mode, the status bar uses a simplified display (`claude-code │ branch`) — model and context-size details are unavailable because Claude Code manages its own model selection. The agent monitor keybindings (`Option-m`, `Option-Shift-m`) show an informational message instead.
 
 ## Multi-Repo Setup
 
@@ -81,213 +258,6 @@ services:
 
 ```bash
 ./opencode-web.sh start my-project
-```
-
-## UI Modes
-
-### web (default)
-
-Nothing to configure — `./opencode-web.sh start` launches OpenCode's browser UI on port 3000. This is the standard graphical interface with file trees, conversation panels, and tool output.
-
-### tui — terminal UI in the browser
-
-Set `OPENCODE_MODE=tui` in `.env` to run OpenCode's terminal interface instead. It's served in the browser via [ttyd](https://github.com/tsl0922/ttyd) — you see a full xterm.js terminal running `opencode`, exactly as it would look in a local terminal. Useful if you prefer the keyboard-driven TUI or want a lighter-weight experience.
-
-```bash
-# .env
-OPENCODE_MODE=tui
-```
-
-Start normally — the same URL now opens a terminal:
-
-```bash
-./opencode-web.sh start
-open http://localhost:3000
-```
-
-Switch back at any time by removing the variable or setting `OPENCODE_MODE=web`.
-
-> **Per-service:** You can mix modes across repos — set `OPENCODE_MODE` in the `environment:` block of any service in `docker-compose.override.yml`.
-
-### tmux — persistent terminal UI
-
-`OPENCODE_MODE=tmux` wraps the TUI in a persistent tmux session. This is the same terminal UI as `tui` mode, but with important differences:
-
-| | tui | tmux |
-|---|-----|------|
-| **Session persistence** | Closing the browser tab kills opencode | Session survives — reopening the URL reattaches instantly |
-| **Pane splitting** | Single pane only | Split panes to run shells alongside opencode |
-| **Shell access from host** | Not possible | `docker exec -it <container> tmux attach -t opencode` |
-| **Scrollback** | Browser-managed | 50,000 lines, vi keys, mouse scroll |
-| **Agent monitor** | Not available | Built-in status bar + live monitor pane showing subagent activity |
-
-```bash
-# .env
-OPENCODE_MODE=tmux
-```
-
-The default tmux prefix is **Ctrl-Space** (not the default Ctrl-b). Key bindings:
-
-| Key | Action |
-|-----|--------|
-| `Ctrl-Space \|` | Split pane vertically |
-| `Ctrl-Space -` | Split pane horizontally |
-| `Ctrl-Space h/j/k/l` | Navigate panes (vim-style) |
-| `Ctrl-Space H/J/K/L` | Resize panes (5 cells, repeatable) |
-| `Ctrl-Space Ctrl-Space` | Cycle to next pane |
-| `Ctrl-Space c` | New window |
-| `Ctrl-Space Enter` | Enter copy/scroll mode (vi keys) |
-| `Ctrl-Space r` | Reload tmux config |
-| `Option-m` | Toggle agent monitor pane (25% height, bottom) |
-| `Option-Shift-m` | Agent monitor fullscreen window |
-| `Option-s` | Toggle status bar |
-
-> **Note:** The `Ctrl-Space` prefix is intercepted by most browsers and ttyd, so the `m`/`M`/`s` monitor bindings use `Option-` root keys instead (no prefix needed). The pane/window bindings above work because `Ctrl-Space` + a letter typically passes through.
-
-#### Agent monitor
-
-The **status bar** shows session info on the left (`opencode │ branch │ model │ context-size`) and active subagent activity on the right (e.g. `2 ⚡explorer·fixer`) plus the local time. Press `Option-m` (or `Ctrl-Space m`) to open a live monitor pane at the bottom of the screen — it polls the SQLite DB and shows a color-coded feed of subagent lifecycle events: `▶ agent started` (with model name and timestamp) and `■ agent done` (with duration and token usage: in/out/cache). Press `Option-Shift-m` (or `Ctrl-Space M`) to open the same feed in a dedicated tmux window instead.
-
-#### Custom tmux config
-
-Mount your own `tmux.conf` to override the defaults:
-
-```yaml
-# docker-compose.override.yml
-services:
-  my-project:
-    volumes:
-      - ./my-tmux.conf:/root/.config/opencode/tmux.conf:ro
-```
-
-If `/root/.config/opencode/tmux.conf` exists, it replaces the built-in config at startup. The built-in config uses `xterm-256color` as the terminal type and enables true-color and RGB passthrough so the opencode TUI renders identically in tmux mode and plain tui mode.
-
-## Themes
-
-Two independent theme layers control the visual appearance:
-
-| Layer | Variable | Values | Scope |
-|-------|----------|--------|-------|
-| **Terminal** | `OPENCODE_THEME` | `dark` (default), `light` | tmux status bar, borders, terminal background. Toggle at runtime: `Ctrl-Space t` |
-| **TUI color scheme** | `OPENCODE_TUI_THEME` | `opencode` (default), `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix` | OpenCode's syntax and UI colors. Change at runtime: `/theme` command |
-
-Set both in `.env`:
-
-```bash
-OPENCODE_THEME=dark
-OPENCODE_TUI_THEME=catppuccin
-```
-
-> **Note:** `OPENCODE_TUI_THEME` only applies to OpenCode (`OPENCODE_APP=opencode`). Claude Code manages its own theme via the `/theme` command after launch.
-
-## Claude Code Mode
-
-Set `OPENCODE_APP=claude-code` in `.env` to run [Anthropic Claude Code](https://github.com/anthropics/claude-code) instead of OpenCode. The same Docker image supports both — the entrypoint detects `OPENCODE_APP` at startup and configures the correct agent.
-
-### Key differences from OpenCode
-
-| | OpenCode | Claude Code |
-|---|---------|-------------|
-| **UI modes** | `web`, `tui`, `tmux` | `tui`, `tmux` only (no web mode) |
-| **API key** | `LLM_API_KEY` | `ANTHROPIC_API_KEY` (falls back to `LLM_API_KEY`) |
-| **Custom endpoint** | `LLM_BASE_URL` | `ANTHROPIC_BASE_URL` (falls back to `LLM_BASE_URL`) |
-| **Prefill proxy** | ✅ Enabled | ✗ Not used |
-| **Model fallback** | ✅ `OPENCODE_MODEL_FALLBACK` | ✗ Not applicable |
-| **Agent monitor** | ✅ tmux status bar + pane | ✗ Not available |
-| **Data volume** | `/root/.local/share/opencode` | `/root/.claude` |
-| **MCP servers** | Configured via `opencode.json` | Configured via `claude-code-mcp.json` |
-
-### Setup
-
-**1.** Set in `.env`:
-
-```bash
-OPENCODE_APP=claude-code
-OPENCODE_MODE=tmux        # or tui — web mode is not supported
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-**2.** Add the Claude Code data volume to your service in `docker-compose.override.yml`:
-
-```yaml
-services:
-  my-project:
-    environment:
-      !override
-      - OPENCODE_APP=claude-code
-      - OPENCODE_MODE=tmux
-      - OPENCODE_PORT=3004
-    volumes:
-      !override
-      - ${REPOS_PATH:-~/repos}/my-project:/workspace
-      - claude-code-data-my-project:/root/.claude
-      - opencode-memory-claude-my-project:/root/.config/opencode/memory
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./.env:/opt/opencode/.env:ro
-      - ${HOME}/.ssh:/root/.ssh:ro
-      - ${HOME}/.gitconfig:/root/.gitconfig:ro
-
-volumes:
-  claude-code-data-my-project:
-    name: claude-code-data-my-project
-  opencode-memory-claude-my-project:
-    name: opencode-memory-claude-my-project
-```
-
-> **Note:** Always mount a named volume to `/root/.claude` — this persists Claude Code's session data, settings, and memory across container restarts. Without it, all session data is lost on `docker compose down`.
-
-> **Upgrading Claude Code?** After rebuilding the image, run `docker volume rm claude-code-data-my-project` if you encounter compatibility issues with stale session data.
-
-**3.** Start normally:
-
-```bash
-./opencode-web.sh start my-project
-open http://localhost:3004
-```
-
-### Authentication
-
-The entrypoint automatically configures authentication at startup:
-
-- `ANTHROPIC_API_KEY` is used directly if set
-- Otherwise `LLM_API_KEY` is mapped to `ANTHROPIC_API_KEY`
-- `ANTHROPIC_BASE_URL` is used if set (for custom or proxy endpoints)
-- Otherwise `LLM_BASE_URL` is mapped to `ANTHROPIC_BASE_URL`
-
-The interactive onboarding wizard, API key approval prompt, and workspace trust dialog are all pre-seeded — the TUI starts directly without interactive prompts.
-
-### MCP servers in Claude Code mode
-
-The same MCP servers available for OpenCode are pre-configured for Claude Code via `/opt/opencode/claude-code-mcp.json.template`:
-
-| Server | Status |
-|--------|--------|
-| `memory` | ✅ Enabled |
-| `context7` | ✅ Enabled |
-| `sequential-thinking` | ✅ Enabled |
-| `time` | ✅ Enabled |
-| `websearch` | ✅ Enabled (remote HTTP) |
-| `playwright` | ❌ Disabled by default |
-| `git` | ❌ Disabled by default |
-
-### tmux adaptations for Claude Code
-
-When running Claude Code in `tmux` mode, the status bar uses a simplified display (`claude-code │ branch`) — model and context-size scraping are not available since Claude Code manages its own model selection. The agent monitor pane and keybindings (`Option-m`, `Option-Shift-m`) show an informational message instead.
-
-## CLI (`opencode-web.sh`)
-
-```bash
-./opencode-web.sh start   [service]   # Build & start (all or one)
-./opencode-web.sh stop    [service]   # Stop
-./opencode-web.sh restart [service]   # Restart
-./opencode-web.sh logs    [service]   # Follow logs
-./opencode-web.sh shell   [service]   # Bash into container
-./opencode-web.sh rebuild [service]   # Force rebuild & start
-./opencode-web.sh nuke    [service]   # Rebuild with latest opencode-ai
-./opencode-web.sh version [service]   # Show opencode-ai version in container
-./opencode-web.sh status              # Show all services
-./opencode-web.sh urls                # Show running URLs/ports
-./opencode-web.sh down                # Stop & remove all containers
 ```
 
 ## Configuration
@@ -369,6 +339,24 @@ Llama 4 Scout (10M context) · Llama 4 Maverick (Vision) · DeepSeek R1 (Reasoni
 
 </details>
 
+## Themes
+
+Two independent theme layers control the visual appearance:
+
+| Layer | Variable | Values | Scope |
+|-------|----------|--------|-------|
+| **Terminal** | `OPENCODE_THEME` | `dark` (default), `light` | tmux status bar, borders, terminal background. Toggle at runtime: `Ctrl-Space t` |
+| **TUI color scheme** | `OPENCODE_TUI_THEME` | `opencode` (default), `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix` | OpenCode's syntax and UI colors. Change at runtime: `/theme` command |
+
+Set both in `.env`:
+
+```bash
+OPENCODE_THEME=dark
+OPENCODE_TUI_THEME=catppuccin
+```
+
+> **Note:** `OPENCODE_TUI_THEME` only applies to OpenCode (`OPENCODE_APP=opencode`). Claude Code manages its own theme via the `/theme` command after launch.
+
 ## MCP Servers
 
 | Server | Enabled | Notes |
@@ -387,7 +375,8 @@ Llama 4 Scout (10M context) · Llama 4 Maverick (Vision) · DeepSeek R1 (Reasoni
 
 Enabled servers run as Node processes inside the container. Docker-based servers (github, atlassian, grafana) launch separate containers via the mounted Docker socket. To enable a disabled server, set `"enabled": true` in the template.
 
-## Plugin: oh-my-opencode-slim
+<details>
+<summary><strong>Plugin: oh-my-opencode-slim</strong></summary>
 
 Controls which models, skills, MCP servers, and fallback chains each agent role uses.
 
@@ -422,8 +411,7 @@ Switch by setting `"preset"` in the JSON file:
 
 Each role accepts: `model`, `variant` (`high`/`medium`/`low`), `skills` (array), `mcps` (array of server names).
 
-<details>
-<summary><strong>Fallback chains</strong></summary>
+### Fallback chains
 
 When a primary model is unavailable or exceeds `timeoutMs` (default 15s), the next model in the chain is tried:
 
@@ -446,7 +434,8 @@ Disable with `"fallback": { "enabled": false }`.
 
 </details>
 
-## Git Multi-Account
+<details>
+<summary><strong>Git Multi-Account</strong></summary>
 
 If you use different git identities for personal and work repos (e.g. `github.com` vs a corporate GitHub Enterprise), you can mount a secondary `.gitconfig-work` with the work identity. Git's [conditional includes](https://git-scm.com/docs/git-config#_conditional_includes) automatically switch based on the repo's remote URL.
 
@@ -477,6 +466,8 @@ GIT_CONFIG_WORK_PATH=~/.gitconfig-work
 
 That's it — repos with remotes pointing to `code.yourcompany.com` will commit with the work identity; everything else uses the default. If `GIT_CONFIG_WORK_PATH` is not set, an empty file is mounted and the conditional include does nothing.
 
+</details>
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -497,11 +488,12 @@ That's it — repos with remotes pointing to `code.yourcompany.com` will commit 
 
 ## Updating
 
-Packages are installed at Docker image build time only — there are no in-container auto-updates.
+Packages are installed at Docker image build time — there are no in-container auto-updates.
 
 - **Update to latest**: `./opencode-web.sh nuke [service]` — rebuilds the image with the latest `opencode-ai`
 - **Check version**: `./opencode-web.sh version [service]`
 - **Pin version**: Set `OPENCODE_VERSION=1.2.15` in `.env` to lock the build to a specific release
+- **Full teardown**: `docker compose down -v` removes all containers and data volumes
 
 ---
 
@@ -560,11 +552,11 @@ A local HTTP proxy between OpenCode and the upstream LLM API:
 <details>
 <summary><strong>Internals: Docker Build</strong></summary>
 
-Multi-stage build for minimal image size:
+Multi-stage build for a minimal image size:
 
 **Builder stage** — `node:22-bookworm-slim` with build tools. Installs `opencode-ai` (version set by `OPENCODE_VERSION` build arg, default `latest`), `@anthropic-ai/claude-code` (version set by `CLAUDE_CODE_VERSION` build arg, default `latest`), provider SDKs (`@ai-sdk/openai-compatible`, `@ai-sdk/groq`, `@openrouter/ai-sdk-provider`), and MCP servers globally.
 
-**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `tini` (PID 1), `tmux` (terminal multiplexer for tmux mode), Docker CLI, Bun, `python3` (required by the cartography skill), and `ttyd` (web terminal for `OPENCODE_MODE=tui` and `tmux`). Copies `node_modules` from builder and re-creates bin symlinks — both `opencode` and `claude` (Claude Code) are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
+**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `tini` (PID 1), `tmux`, Docker CLI, Bun, `python3` (for the cartography skill), and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks — both `opencode` and `claude` (Claude Code) are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
 
 </details>
 
