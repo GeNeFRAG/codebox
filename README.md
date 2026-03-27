@@ -162,6 +162,24 @@ services:
 
 If `/root/.config/opencode/tmux.conf` exists, it replaces the built-in config at startup. The built-in config uses `xterm-256color` as the terminal type and enables true-color and RGB passthrough so the opencode TUI renders identically in tmux mode and plain tui mode.
 
+## Themes
+
+Two independent theme layers control the visual appearance:
+
+| Layer | Variable | Values | Scope |
+|-------|----------|--------|-------|
+| **Terminal** | `OPENCODE_THEME` | `dark` (default), `light` | tmux status bar, borders, terminal background. Toggle at runtime: `Ctrl-Space t` |
+| **TUI color scheme** | `OPENCODE_TUI_THEME` | `opencode` (default), `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix` | OpenCode's syntax and UI colors. Change at runtime: `/theme` command |
+
+Set both in `.env`:
+
+```bash
+OPENCODE_THEME=dark
+OPENCODE_TUI_THEME=catppuccin
+```
+
+> **Note:** `OPENCODE_TUI_THEME` only applies to OpenCode (`OPENCODE_APP=opencode`). Claude Code manages its own theme via the `/theme` command after launch.
+
 ## Claude Code Mode
 
 Set `OPENCODE_APP=claude-code` in `.env` to run [Anthropic Claude Code](https://github.com/anthropics/claude-code) instead of OpenCode. The same Docker image supports both — the entrypoint detects `OPENCODE_APP` at startup and configures the correct agent.
@@ -302,6 +320,8 @@ When running Claude Code in `tmux` mode, the status bar uses a simplified displa
 | `OPENCODE_PORT` | Web UI / TUI port (default: `3000`) |
 | `OPENCODE_MODE` | `web` (default) — browser web UI · `tui` — terminal UI via ttyd · `tmux` — terminal UI via tmux + ttyd. Note: `web` is not supported for Claude Code |
 | `OPENCODE_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
+| `OPENCODE_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime with `Ctrl-Space t` |
+| `OPENCODE_TUI_THEME` | OpenCode TUI color scheme (default: `opencode`). Built-in themes: `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix`. Change at runtime with `/theme`. OpenCode only |
 | `OPENCODE_MODEL_FALLBACK` | Fallback model if LLM gateway is unreachable at startup (e.g. `github-copilot/gemini-2.5-pro`). OpenCode only, ignored for Claude Code |
 | `OPENCODE_EXTRA_ARGS` | Extra arguments passed to the agent binary |
 | `OPENCODE_TUI_ARGS` | Extra arguments passed to `ttyd` when `OPENCODE_MODE=tui` or `tmux` |
