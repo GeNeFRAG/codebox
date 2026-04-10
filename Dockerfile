@@ -176,16 +176,16 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY lib/ /opt/opencode/lib/
 COPY templates/ /opt/opencode/templates/
 COPY proxy/prefill-proxy.mjs /opt/opencode/proxy/prefill-proxy.mjs
-COPY monitor/agent-monitor.sh /opt/opencode/monitor/agent-monitor.sh
-COPY monitor/agent-monitor-toggle.sh /opt/opencode/monitor/agent-monitor-toggle.sh
-COPY monitor/agent-status.sh /opt/opencode/monitor/agent-status.sh
+COPY tmux/agent-monitor.sh /opt/opencode/tmux/agent-monitor.sh
+COPY tmux/agent-monitor-toggle.sh /opt/opencode/tmux/agent-monitor-toggle.sh
+COPY tmux/agent-status.sh /opt/opencode/tmux/agent-status.sh
 COPY tmux/session-status.sh /opt/opencode/tmux/session-status.sh
 COPY tmux/session-status-claude.sh /opt/opencode/tmux/session-status-claude.sh
 COPY tmux/tmux-theme-toggle.sh /opt/opencode/tmux/tmux-theme-toggle.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
-    /opt/opencode/monitor/agent-monitor.sh \
-    /opt/opencode/monitor/agent-monitor-toggle.sh \
-    /opt/opencode/monitor/agent-status.sh \
+    /opt/opencode/tmux/agent-monitor.sh \
+    /opt/opencode/tmux/agent-monitor-toggle.sh \
+    /opt/opencode/tmux/agent-status.sh \
     /opt/opencode/tmux/session-status.sh \
     /opt/opencode/tmux/session-status-claude.sh \
     /opt/opencode/tmux/tmux-theme-toggle.sh
