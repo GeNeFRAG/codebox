@@ -175,6 +175,7 @@ COPY tmux-theme-light.conf /opt/opencode/tmux-theme-light.conf
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY opencode.json.template /opt/opencode/opencode.json.template
 COPY claude-code.mcp.json.template /opt/opencode/claude-code.mcp.json.template
+COPY flowcode.mcp.json.template /opt/opencode/flowcode.mcp.json.template
 COPY prefill-proxy.mjs /opt/opencode/prefill-proxy.mjs
 COPY agent-monitor.sh /opt/opencode/agent-monitor.sh
 COPY agent-monitor-toggle.sh /opt/opencode/agent-monitor-toggle.sh

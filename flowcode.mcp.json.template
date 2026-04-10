@@ -1,0 +1,120 @@
+{
+  "mcpServers": {
+    "github_rbi": {
+      "type": "stdio",
+      "enabled": false,
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
+        "-e", "SSL_CERT_FILE=/certs/ca-bundle.pem",
+        "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e", "GITHUB_HOST",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_ENTERPRISE_TOKEN}",
+        "GITHUB_HOST": "${GITHUB_ENTERPRISE_URL}"
+      }
+    },
+    "github_personal": {
+      "type": "stdio",
+      "enabled": false,
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
+        "-e", "SSL_CERT_FILE=/certs/ca-bundle.pem",
+        "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e", "GITHUB_HOST",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_TOKEN}",
+        "GITHUB_HOST": "https://github.com/"
+      }
+    },
+    "mcp-atlassian": {
+      "type": "stdio",
+      "enabled": false,
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
+        "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
+        "-e", "CONFLUENCE_URL",
+        "-e", "CONFLUENCE_USERNAME",
+        "-e", "CONFLUENCE_PERSONAL_TOKEN",
+        "-e", "CONFLUENCE_SSL_VERIFY",
+        "-e", "JIRA_URL",
+        "-e", "JIRA_USERNAME",
+        "-e", "JIRA_PERSONAL_TOKEN",
+        "-e", "JIRA_SSL_VERIFY",
+        "-e", "TOOLSETS",
+        "ghcr.io/sooperset/mcp-atlassian:latest"
+      ],
+      "env": {
+        "CONFLUENCE_URL": "${CONFLUENCE_URL}",
+        "CONFLUENCE_USERNAME": "${CONFLUENCE_USERNAME}",
+        "CONFLUENCE_PERSONAL_TOKEN": "${CONFLUENCE_TOKEN}",
+        "CONFLUENCE_SSL_VERIFY": "false",
+        "JIRA_URL": "${JIRA_URL}",
+        "JIRA_USERNAME": "${JIRA_USERNAME}",
+        "JIRA_SSL_VERIFY": "false",
+        "JIRA_PERSONAL_TOKEN": "${JIRA_TOKEN}",
+        "TOOLSETS": "${ATLASSIAN_TOOLSETS}"
+      }
+    },
+    "grafana": {
+      "type": "stdio",
+      "enabled": false,
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
+        "-e", "GRAFANA_URL",
+        "-e", "GRAFANA_API_KEY",
+        "mcp/grafana",
+        "-t", "stdio",
+        "--tls-ca-file", "/certs/ca-bundle.pem"
+      ],
+      "env": {
+        "GRAFANA_URL": "${GRAFANA_URL}",
+        "GRAFANA_API_KEY": "${GRAFANA_API_KEY}"
+      }
+    },
+    "memory": {
+      "type": "stdio",
+      "command": "mcp-server-memory",
+      "args": [],
+      "env": {
+        "MEMORY_FILE_PATH": "/root/.config/opencode/memory/memory.json"
+      }
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "context7-mcp",
+      "args": []
+    },
+    "sequential-thinking": {
+      "type": "stdio",
+      "command": "mcp-server-sequential-thinking",
+      "args": []
+    },
+    "time": {
+      "type": "stdio",
+      "command": "mcp-time-server",
+      "args": []
+    },
+    "websearch": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp"
+    },
+    "playwright": {
+      "type": "stdio",
+      "enabled": false,
+      "command": "playwright-mcp",
+      "args": []
+    }
+  }
+}

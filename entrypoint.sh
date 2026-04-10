@@ -181,13 +181,22 @@ _generate_flowcode_config() {
     local config_dir="/root/.config/flowcode"
     local config_file="${config_dir}/config.json"
     local creds_file="${config_dir}/credentials.json"
+    local mcp_template="/opt/opencode/flowcode.mcp.json.template"
 
     mkdir -p "${config_dir}"
 
-    # 1. Generate config.json (MCP servers can be added via FlowCode's web UI)
-    echo '{}' > "${config_file}"
-    chmod 600 "${config_file}"
-    echo "  ✓ FlowCode config written to ${config_file}"
+    # 1. Generate config.json — wrap the MCP server list in {"mcpServers": ...}
+    #    using the same template as Claude Code (same MCP stdio/http schema).
+    if [ -f "${mcp_template}" ]; then
+        envsubst '${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}' \
+            < "${mcp_template}" > "${config_file}"
+        chmod 600 "${config_file}"
+        echo "  ✓ FlowCode config (MCP servers) written to ${config_file}"
+    else
+        echo '{}' > "${config_file}"
+        chmod 600 "${config_file}"
+        echo "  ⚠ MCP template not found (${mcp_template}) — FlowCode will start without MCP servers"
+    fi
 
     # 2. Generate credentials.json (map LLM_API_KEY/LLM_BASE_URL to FlowCode format)
     local auth_token="${ANTHROPIC_AUTH_TOKEN:-${LLM_API_KEY:-}}"
