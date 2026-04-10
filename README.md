@@ -14,7 +14,7 @@ Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://g
 
 | Mode | Set in `.env` | What you get |
 |------|--------------|--------------|
-| **web** (default) | `OPENCODE_MODE=web` | OpenCode's built-in browser UI (OpenCode only) |
+| **web** (default) | `OPENCODE_MODE=web` | OpenCode's built-in browser UI (OpenCode and FlowCode; not applicable for Claude Code) |
 | **tui** | `OPENCODE_MODE=tui` | The full terminal UI, rendered in the browser via [ttyd](https://github.com/tsl0922/ttyd) / xterm.js — identical to running the agent in a local terminal |
 | **tmux** | `OPENCODE_MODE=tmux` | Same terminal UI, wrapped in a persistent [tmux](https://github.com/tmux/tmux) session — survives browser disconnects, supports pane splitting, shell access alongside the agent, and a built-in agent activity monitor |
 
@@ -52,7 +52,7 @@ open http://localhost:3000
 ```bash
 git clone <repo-url> && cd opencode-docker
 cp .env.example .env
-vim .env          # Set LLM_API_KEY (or ANTHROPIC_AUTH_TOKEN), OPENCODE_APP=flowcode
+vim .env          # Set ANTHROPIC_AUTH_TOKEN (or LLM_API_KEY as fallback), OPENCODE_APP=flowcode
 ./opencode-web.sh start
 open http://localhost:3000
 ```
@@ -81,11 +81,13 @@ open http://localhost:3000
 
 ### web (default)
 
-Nothing to configure — `./opencode-web.sh start` launches OpenCode's browser UI on port 3000. This is the standard graphical interface with file trees, conversation panels, and tool output.
+Nothing to configure — `./opencode-web.sh start` launches OpenCode's browser UI on port 3000. This is the standard graphical interface with file trees, conversation panels, and tool output. FlowCode also runs in web mode (it is hardcoded and cannot be changed).
+
+> **Note:** `OPENCODE_MODE` is only a meaningful setting for OpenCode. For Claude Code only `tui` or `tmux` are valid (web mode is a fatal error). For FlowCode the value is always overridden to `web` regardless of what is set.
 
 ### tui — terminal UI in the browser
 
-Set `OPENCODE_MODE=tui` in `.env` to run OpenCode's terminal interface. It's served in the browser via [ttyd](https://github.com/tsl0922/ttyd) — you see a full xterm.js terminal running `opencode`, exactly as it would look in a local terminal. Useful if you prefer the keyboard-driven TUI or want a lighter-weight experience.
+Set `OPENCODE_MODE=tui` in `.env` to run the terminal interface in the browser via [ttyd](https://github.com/tsl0922/ttyd) — a full xterm.js terminal, exactly as it would look in a local terminal. Supported by OpenCode and Claude Code. Useful if you prefer the keyboard-driven TUI or want a lighter-weight experience.
 
 ```bash
 # .env
@@ -140,7 +142,7 @@ The tmux prefix is **Ctrl-Space** (instead of the usual Ctrl-b). Key bindings:
 
 #### Agent monitor
 
-The **status bar** shows session info on the left (`opencode │ branch │ model │ context-size`) and active subagent activity on the right (e.g. `2 ⚡explorer·fixer`) plus the local time. Press `Option-m` (or `Ctrl-Space m`) to open a live monitor pane at the bottom of the screen — it polls the SQLite DB and shows a color-coded feed of subagent lifecycle events: `▶ agent started` (with model name and timestamp) and `■ agent done` (with duration and token usage: in/out/cache). Press `Option-Shift-m` (or `Ctrl-Space M`) to open the same feed in a dedicated tmux window instead.
+The **status bar** shows session info on the left (`opencode │ branch │ model │ context-size`) and active subagent activity on the right (e.g. `2 ⚡explorer·fixer`) plus the local time. Press `Option-m` to open a live monitor pane at the bottom of the screen — it polls the SQLite DB and shows a color-coded feed of subagent lifecycle events: `▶ agent started` (with model name and timestamp) and `■ agent done` (with duration and token usage: in/out/cache). Press `Option-Shift-m` to open the same feed in a dedicated tmux window instead.
 
 #### Custom tmux config
 
@@ -291,8 +293,19 @@ services:
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Anthropic API key. Falls back to `LLM_API_KEY` if not set |
 | `OPENCODE_APP` | Set to `claude-code` |
-| `OPENCODE_MODE` | Set to `tui` or `tmux` (web mode is not supported) |
 | `ANTHROPIC_BASE_URL` | *(Optional)* Custom/proxy endpoint. Falls back to `LLM_BASE_URL` if not set |
+
+> **Note:** Do not set `OPENCODE_MODE` for Claude Code — only `tui` and `tmux` are valid; `web` is a fatal error.
+
+**For FlowCode** — set these in `.env`:
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_AUTH_TOKEN` | Auth token for the RBI GenAI Gateway. Falls back to `LLM_API_KEY` if not set |
+| `OPENCODE_APP` | Set to `flowcode` |
+| `ANTHROPIC_BASE_URL` | *(Optional)* Gateway endpoint. Falls back to `LLM_BASE_URL` if not set |
+
+> **Note:** Do not set `OPENCODE_MODE` for FlowCode — it always runs in `web` mode regardless of what is set.
 
 <details>
 <summary><strong>All environment variables</strong></summary>
@@ -301,25 +314,30 @@ services:
 |----------|-------------|
 | `OPENCODE_APP` | `opencode` (default) — OpenCode AI agent · `claude-code` — Anthropic Claude Code agent · `flowcode` — FlowCode (RBI) agent (web only) |
 | `OPENCODE_PORT` | Web UI / TUI port (default: `3000`) |
-| `OPENCODE_MODE` | `web` (default) — browser web UI · `tui` — terminal UI via ttyd · `tmux` — terminal UI via tmux + ttyd. Note: `web` is not supported for Claude Code; `tui`/`tmux` are not supported for FlowCode |
+| `OPENCODE_MODE` | OpenCode only — `web` (default) · `tui` · `tmux`. For Claude Code, only `tui`/`tmux` are valid (`web` is a fatal error at startup). For FlowCode, this variable is ignored — mode is always `web`. |
 | `OPENCODE_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
-| `OPENCODE_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime with `Ctrl-Space t` |
+| `FLOWCODE_VERSION` | Pin FlowCode version for builds (default: `latest`). FlowCode only |
+| `OPENCODE_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime: `Ctrl-Space t` |
 | `OPENCODE_TUI_THEME` | OpenCode TUI color scheme (default: `opencode`). Built-in themes: `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix`. Change at runtime with `/theme`. OpenCode only |
-| `OPENCODE_MODEL_FALLBACK` | Fallback model if LLM gateway is unreachable at startup (e.g. `github-copilot/gemini-2.5-pro`). OpenCode only, ignored for Claude Code |
+| `OPENCODE_TITLE` | Browser tab title for tui/tmux modes. Auto-detected from Compose service name if not set |
+| `OPENCODE_MODEL_FALLBACK` | Fallback model if LLM gateway is unreachable at startup (e.g. `github-copilot/gemini-2.5-pro`). OpenCode only |
 | `OPENCODE_EXTRA_ARGS` | Extra arguments passed to the agent binary |
 | `OPENCODE_TUI_ARGS` | Extra arguments passed to `ttyd` when `OPENCODE_MODE=tui` or `tmux` |
+| `TZ` | Timezone for timestamps in the agent monitor and tmux status bar (default: `UTC`) |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude Code. Falls back to `LLM_API_KEY` if not set |
 | `ANTHROPIC_AUTH_TOKEN` | Auth token for FlowCode. Falls back to `LLM_API_KEY` if not set |
 | `ANTHROPIC_BASE_URL` | Custom/proxy endpoint for Claude Code or FlowCode. Falls back to `LLM_BASE_URL` if not set |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
-| `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `true`). Set `false` to connect directly to `LLM_BASE_URL`. |
-| `PROXY_LOG_LEVEL` | Prefill proxy verbosity: `debug` / `info` (default) / `warn` / `error` |
+| `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `true`). OpenCode only. Set `false` to connect directly to `LLM_BASE_URL`. |
+| `PROXY_TIMEOUT` | Upstream timeout in seconds for the prefill proxy (default: `120`). OpenCode only |
+| `PROXY_LOG_LEVEL` | Prefill proxy verbosity: `debug` / `info` (default) / `warn` / `error`. OpenCode only |
 | `DOCKER_NETWORK_MODE` | Set to `host` on Linux to bypass Docker bridge NAT (~70-80ms savings). Not supported on Docker Desktop. |
 | `GIT_CREDENTIALS_PATH` | Host path to `.git-credentials` for HTTPS push (default: disabled) |
 | `GIT_CONFIG_WORK_PATH` | Host path to a secondary `.gitconfig-work` for work git identity — see [Git Multi-Account](#git-multi-account) (default: disabled) |
-| `HOST_AUTH_JSON` | Host path to `auth.json` for Copilot tokens etc. (default: disabled) |
+| `HOST_AUTH_JSON` | Host path to `auth.json` for Copilot tokens etc. (default: disabled). OpenCode only |
 | `OPENROUTER_API_KEY` | OpenRouter API key |
+| `ATLASSIAN_TOOLSETS` | Limit which Atlassian toolsets are exposed (default: all). E.g. `jira_issues,confluence_pages` |
 | `GITHUB_ENTERPRISE_TOKEN` | GitHub Enterprise PAT |
 | `GITHUB_ENTERPRISE_URL` | GitHub Enterprise URL |
 | `GITHUB_PERSONAL_TOKEN` | GitHub.com PAT |
