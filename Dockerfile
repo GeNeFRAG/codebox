@@ -130,7 +130,7 @@ COPY --from=flowcode /app/node_modules/bun-pty /opt/flowcode/bun-pty
 
 # ─── Plugin config (oh-my-opencode-slim) ───────────────────────────
 # Baked into the image; override at runtime via docker-compose volume mount.
-COPY examples/oh-my-opencode-slim.json.example /root/.config/opencode/oh-my-opencode-slim.json
+COPY templates/oh-my-opencode-slim.json /root/.config/opencode/oh-my-opencode-slim.json
 
 # Re-create global bin symlinks (npm symlinks are lost across stages)
 # IMPORTANT: Copy the Go binary to a stable path OUTSIDE node_modules.
