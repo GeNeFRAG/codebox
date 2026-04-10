@@ -16,7 +16,7 @@ if [ "${OPENCODE_APP}" = "claude-code" ]; then
     fi
 
     # Build extra args for Claude Code (--mcp-config flag)
-    _claude_extra="--mcp-config /opt/opencode/claude-code-mcp.json"
+    _claude_extra="--mcp-config /opt/opencode/templates/claude-code-mcp.json"
     export OPENCODE_EXTRA_ARGS="${OPENCODE_EXTRA_ARGS:+${OPENCODE_EXTRA_ARGS} }${_claude_extra}"
 
     _app_ver=$("${APP_BIN}" --version 2>/dev/null || echo "unknown")

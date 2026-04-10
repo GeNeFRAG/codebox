@@ -130,7 +130,7 @@ COPY --from=flowcode /app/node_modules/bun-pty /opt/flowcode/bun-pty
 
 # ─── Plugin config (oh-my-opencode-slim) ───────────────────────────
 # Baked into the image; override at runtime via docker-compose volume mount.
-COPY oh-my-opencode-slim.json.example /root/.config/opencode/oh-my-opencode-slim.json
+COPY examples/oh-my-opencode-slim.json.example /root/.config/opencode/oh-my-opencode-slim.json
 
 # Re-create global bin symlinks (npm symlinks are lost across stages)
 # IMPORTANT: Copy the Go binary to a stable path OUTSIDE node_modules.
@@ -167,30 +167,28 @@ RUN npx skills add https://github.com/brianlovin/claude-config --skill simplify 
     cp -r /root/.config/opencode/node_modules/oh-my-opencode-slim/src/skills/cartography /root/.config/opencode/skills/cartography
 
 # ─── tmux configuration (TUI mode) ────────────────────────────────
-COPY tmux.conf /root/.tmux.conf
-COPY tmux-theme-dark.conf /opt/opencode/tmux-theme-dark.conf
-COPY tmux-theme-light.conf /opt/opencode/tmux-theme-light.conf
+COPY tmux/tmux.conf /root/.tmux.conf
+COPY tmux/tmux-theme-dark.conf /opt/opencode/tmux/tmux-theme-dark.conf
+COPY tmux/tmux-theme-light.conf /opt/opencode/tmux/tmux-theme-light.conf
 
 # ─── Entrypoint and config ────────────────────────────────────────
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY lib/ /opt/opencode/lib/
-COPY opencode.json.template /opt/opencode/opencode.json.template
-COPY claude-code.mcp.json.template /opt/opencode/claude-code.mcp.json.template
-COPY flowcode.mcp.json.template /opt/opencode/flowcode.mcp.json.template
-COPY prefill-proxy.mjs /opt/opencode/prefill-proxy.mjs
-COPY agent-monitor.sh /opt/opencode/agent-monitor.sh
-COPY agent-monitor-toggle.sh /opt/opencode/agent-monitor-toggle.sh
-COPY agent-status.sh /opt/opencode/agent-status.sh
-COPY session-status.sh /opt/opencode/session-status.sh
-COPY session-status-claude.sh /opt/opencode/session-status-claude.sh
-COPY tmux-theme-toggle.sh /opt/opencode/tmux-theme-toggle.sh
+COPY templates/ /opt/opencode/templates/
+COPY proxy/prefill-proxy.mjs /opt/opencode/proxy/prefill-proxy.mjs
+COPY monitor/agent-monitor.sh /opt/opencode/monitor/agent-monitor.sh
+COPY monitor/agent-monitor-toggle.sh /opt/opencode/monitor/agent-monitor-toggle.sh
+COPY monitor/agent-status.sh /opt/opencode/monitor/agent-status.sh
+COPY tmux/session-status.sh /opt/opencode/tmux/session-status.sh
+COPY tmux/session-status-claude.sh /opt/opencode/tmux/session-status-claude.sh
+COPY tmux/tmux-theme-toggle.sh /opt/opencode/tmux/tmux-theme-toggle.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
-    /opt/opencode/agent-monitor.sh \
-    /opt/opencode/agent-monitor-toggle.sh \
-    /opt/opencode/agent-status.sh \
-    /opt/opencode/session-status.sh \
-    /opt/opencode/session-status-claude.sh \
-    /opt/opencode/tmux-theme-toggle.sh
+    /opt/opencode/monitor/agent-monitor.sh \
+    /opt/opencode/monitor/agent-monitor-toggle.sh \
+    /opt/opencode/monitor/agent-status.sh \
+    /opt/opencode/tmux/session-status.sh \
+    /opt/opencode/tmux/session-status-claude.sh \
+    /opt/opencode/tmux/tmux-theme-toggle.sh
 
 # Port is set at runtime via OPENCODE_PORT (default 3000)
 # EXPOSE is omitted — each compose service maps its own port.

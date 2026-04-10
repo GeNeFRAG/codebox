@@ -7,7 +7,7 @@
 _start_proxy() {
     echo "→ Starting prefill proxy on 127.0.0.1:18080 → ${LLM_BASE_URL}..."
     UPSTREAM_URL="${LLM_BASE_URL}" PROXY_PORT=18080 \
-        node /opt/opencode/prefill-proxy.mjs &
+        node /opt/opencode/proxy/prefill-proxy.mjs &
     PROXY_PID=$!
 
     # Poll for readiness instead of a fixed sleep (up to 5s)
@@ -45,7 +45,7 @@ _restart_proxy() {
         if [ -z "${PROXY_PID:-}" ] || ! kill -0 "${PROXY_PID}" 2>/dev/null; then
             echo "  ⟳ Prefill proxy not running — restarting..."
             UPSTREAM_URL="${LLM_BASE_URL}" PROXY_PORT=18080 \
-                node /opt/opencode/prefill-proxy.mjs &
+                node /opt/opencode/proxy/prefill-proxy.mjs &
             PROXY_PID=$!
             sleep 1
             if kill -0 "${PROXY_PID}" 2>/dev/null; then

@@ -20,5 +20,5 @@ if [ -n "$pane_id" ]; then
 else
     # No monitor pane — create one at the bottom (25% height)
     tmux split-window -v -l '25%' -d \
-        "printf '\\033]2;${MONITOR_TITLE}\\033\\\\'; bash /opt/opencode/agent-monitor.sh"
+        "printf '\\033]2;${MONITOR_TITLE}\\033\\\\'; bash /opt/opencode/monitor/agent-monitor.sh"
 fi

@@ -33,14 +33,14 @@ if [ "${OPENCODE_MODE}" = "tmux" ]; then
     # The tmux-theme-toggle.sh sources from THEME_DIR which we override
     # via an exported env var that the wrapper and toggle script read.
     if [ "${OPENCODE_APP}" = "claude-code" ]; then
-        for _theme_file in /opt/opencode/tmux-theme-dark.conf /opt/opencode/tmux-theme-light.conf; do
+        for _theme_file in /opt/opencode/tmux/tmux-theme-dark.conf /opt/opencode/tmux/tmux-theme-light.conf; do
             _basename=$(basename "${_theme_file}")
             sed 's|/session-status\.sh|/session-status-claude.sh|g' \
                 "${_theme_file}" > "/tmp/${_basename}"
         done
         export TMUX_THEME_DIR="/tmp"
     else
-        export TMUX_THEME_DIR="/opt/opencode"
+        export TMUX_THEME_DIR="/opt/opencode/tmux"
     fi
 
     echo "→ Starting ${APP_TITLE_PREFIX} TUI via tmux + ttyd on 0.0.0.0:${OPENCODE_PORT:-3000}..."

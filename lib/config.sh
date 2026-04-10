@@ -4,7 +4,7 @@
 
 CONFIG_DIR="/root/.config/opencode"
 DATA_DIR="/root/.local/share/opencode"
-TEMPLATE="/opt/opencode/opencode.json.template"
+TEMPLATE="/opt/opencode/templates/opencode.json.template"
 CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 
 # ─── Reusable config generation (called on startup + proxy fallback) ─
@@ -20,8 +20,8 @@ _generate_config() {
 
 # ─── Claude Code config generation ──────────────────────────────────
 _generate_claude_code_config() {
-    local mcp_template="/opt/opencode/claude-code.mcp.json.template"
-    local mcp_config="/opt/opencode/claude-code-mcp.json"
+    local mcp_template="/opt/opencode/templates/claude-code.mcp.json.template"
+    local mcp_config="/opt/opencode/templates/claude-code-mcp.json"
     local settings_dir="/root/.claude"
     local settings_file="${settings_dir}/settings.json"
 
@@ -121,7 +121,7 @@ _generate_flowcode_config() {
     local config_dir="/root/.config/flowcode"
     local config_file="${config_dir}/config.json"
     local creds_file="${config_dir}/credentials.json"
-    local mcp_template="/opt/opencode/flowcode.mcp.json.template"
+    local mcp_template="/opt/opencode/templates/flowcode.mcp.json.template"
 
     mkdir -p "${config_dir}"
 
