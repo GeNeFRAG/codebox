@@ -74,7 +74,7 @@ services:
       - "3000:3000"
     healthcheck:
       <<: *opencode-healthcheck
-      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      test: ["CMD-SHELL", "if [ \"${OPENCODE_TLS:-true}\" = true ] && [ \"${OPENCODE_MODE:-web}\" != web ]; then curl -kf https://localhost:${OPENCODE_PORT:-3000}/; else curl -f http://localhost:${OPENCODE_PORT:-3000}/; fi"]
     environment:
       - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
       - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
@@ -94,6 +94,8 @@ services:
       # ─── Host auth.json (merged at startup for Copilot etc.) ──
       - ${HOST_AUTH_JSON:-.docker/empty-file}:/opt/opencode/host-auth.json:ro
       - ${CA_CERT_PATH:-.docker/empty-file}:/certs/ca-bundle.pem:ro
+      # ─── mkcert CA root (persists across restarts — import once) ──
+      - mkcert-ca-self:/certs/mkcert-ca
       # ─── .env file (reloaded on container restart) ────────
       - ./.env:/opt/opencode/.env:ro
 
@@ -115,6 +117,8 @@ volumes:
   # ⚠ IMPORTANT: Add `- flowcode-data-self:/var/flowcode/workspaces` to the
   #   service's volumes in docker-compose.override.yml for persistent FlowCode
   #   workspace and session data.
+  mkcert-ca-self:
+    name: mkcert-ca-self
   flowcode-data-self:
     name: flowcode-data-self
 

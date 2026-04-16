@@ -80,15 +80,19 @@ fi
 # shellcheck source=lib/ca-cert.sh
 . "${LIB}/ca-cert.sh"
 
-# ─── 7. OpenCode plugins ────────────────────────────────────────────
+# ─── 7. TLS certificate for ttyd (tui/tmux clipboard support) ──────
+# shellcheck source=lib/tls.sh
+. "${LIB}/tls.sh"
+
+# ─── 8. OpenCode plugins ────────────────────────────────────────────
 # shellcheck source=lib/plugins.sh
 . "${LIB}/plugins.sh"
 
-# ─── 8. System checks (Docker socket, git, workspace symlinks) ──────
+# ─── 9. System checks (Docker socket, git, workspace symlinks) ──────
 # shellcheck source=lib/system-checks.sh
 . "${LIB}/system-checks.sh"
 
-# ─── 9. Prefill proxy (OpenCode only) ──────────────────────────────
+# ─── 10. Prefill proxy (OpenCode only) ─────────────────────────────
 if [ "${OPENCODE_APP}" = "opencode" ] && [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
     _start_proxy
 elif [ "${OPENCODE_APP}" = "opencode" ]; then
@@ -96,10 +100,10 @@ elif [ "${OPENCODE_APP}" = "opencode" ]; then
 fi
 echo ""
 
-# ─── 10. Binary resolution, banner, theme, title ───────────────────
+# ─── 11. Binary resolution, banner, theme, title ──────────────────
 # shellcheck source=lib/runtime.sh
 . "${LIB}/runtime.sh"
 
-# ─── 11. Mode launch (tmux / tui / web) — does not return ──────────
+# ─── 12. Mode launch (tmux / tui / web) — does not return ─────────
 # shellcheck source=lib/modes.sh
 . "${LIB}/modes.sh"

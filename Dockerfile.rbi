@@ -129,6 +129,12 @@ RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}" \
     -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
 
+# ─── mkcert (locally-trusted TLS certs for ttyd clipboard support) ──
+ARG MKCERT_VERSION=1.4.4
+RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -fsSL "https://github.com/FiloSottile/mkcert/releases/download/v${MKCERT_VERSION}/mkcert-v${MKCERT_VERSION}-linux-${ARCH}" \
+    -o /usr/local/bin/mkcert && chmod +x /usr/local/bin/mkcert
+
 # ─── Bun ───────────────────────────────────────────────────────────
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"

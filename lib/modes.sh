@@ -44,7 +44,7 @@ if [ "${OPENCODE_MODE}" = "tmux" ]; then
     fi
 
     echo "→ Starting ${APP_TITLE_PREFIX} TUI via tmux + ttyd on 0.0.0.0:${OPENCODE_PORT:-3000}..."
-    echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
+    echo "  Access: ${_TTYD_PROTOCOL:-http}://localhost:${OPENCODE_PORT:-3000}"
     echo "  Attach: docker exec -it <container> tmux attach -t ${TMUX_SESSION}"
     echo ""
 
@@ -140,8 +140,8 @@ WRAPPER
             --port "${OPENCODE_PORT:-3000}" \
             --interface 0.0.0.0 \
             --writable \
+            ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${OPENCODE_TITLE:-${APP_TITLE_PREFIX} (tmux)}" \
-            -t enableClipboard=true \
             ${OPENCODE_TUI_ARGS:-} \
             /tmp/tmux-wrapper.sh
         _rc=$?
@@ -156,7 +156,7 @@ WRAPPER
 elif [ "${OPENCODE_MODE}" = "tui" ]; then
     # ── TUI mode: app TUI served directly by ttyd ────────────────
     echo "→ Starting ${APP_TITLE_PREFIX} TUI via ttyd on 0.0.0.0:${OPENCODE_PORT:-3000}..."
-    echo "  Access: http://localhost:${OPENCODE_PORT:-3000}"
+    echo "  Access: ${_TTYD_PROTOCOL:-http}://localhost:${OPENCODE_PORT:-3000}"
     echo ""
 
     # Restart loop with exponential backoff on consecutive failures.
@@ -167,8 +167,8 @@ elif [ "${OPENCODE_MODE}" = "tui" ]; then
             --interface 0.0.0.0 \
             --writable \
             --cwd /workspace \
+            ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${OPENCODE_TITLE:-${APP_TITLE_PREFIX} (tui)}" \
-            -t enableClipboard=true \
             ${OPENCODE_TUI_ARGS:-} \
             "${APP_BIN}" ${OPENCODE_EXTRA_ARGS:-}
         _rc=$?
