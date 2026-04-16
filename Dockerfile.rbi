@@ -63,7 +63,8 @@ RUN npm install -g \
     @modelcontextprotocol/server-sequential-thinking@2025.12.18 \
     mcp-time-server@1.0.1 \
     @playwright/mcp@0.0.68 \
-    @cyanheads/git-mcp-server@2.8.4
+    @cyanheads/git-mcp-server@2.8.4 \
+    @hypnosis/docker-mcp-server@1.4.1
 
 # ═══════════════════════════════════════════════════════════════════
 # FlowCode stage: extract pre-built binary + SPA from official image
@@ -162,7 +163,8 @@ RUN cp /usr/local/lib/node_modules/opencode-ai/bin/.opencode /usr/local/bin/open
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js /usr/local/bin/mcp-server-sequential-thinking && \
     ln -sf ../lib/node_modules/mcp-time-server/bin/mcp-time-server.js /usr/local/bin/mcp-time-server && \
     ln -sf ../lib/node_modules/@playwright/mcp/cli.js /usr/local/bin/playwright-mcp && \
-    ln -sf ../lib/node_modules/@cyanheads/git-mcp-server/dist/index.js /usr/local/bin/git-mcp-server
+    ln -sf ../lib/node_modules/@cyanheads/git-mcp-server/dist/index.js /usr/local/bin/git-mcp-server && \
+    ln -sf ../lib/node_modules/@hypnosis/docker-mcp-server/dist/index.js /usr/local/bin/docker-mcp-server
 
 # ─── Workspace and data directories ───────────────────────────────
 RUN mkdir -p /workspace \
