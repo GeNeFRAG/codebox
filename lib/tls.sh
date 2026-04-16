@@ -2,8 +2,9 @@
 # Generate locally-trusted TLS certificates for ttyd using mkcert.
 # Enables the browser Clipboard API over HTTPS (requires a secure context).
 #
-# The mkcert CA root persists in a named volume (/certs/mkcert-ca) so the
+# The mkcert CA root persists in a bind mount (.docker/mkcert-ca/) so the
 # user only needs to import it into their host trust store once.
+# Unlike named volumes, bind mounts survive `docker compose down -v`.
 #
 # Env vars:
 #   OPENCODE_TLS       — "true" (default for tui/tmux) or "false" to disable
@@ -53,23 +54,24 @@ if [ -z "${OPENCODE_TLS_CERT:-}" ] || [ -z "${OPENCODE_TLS_KEY:-}" ]; then
     echo "→ TLS: mkcert certificate generated for localhost"
 
     if [ "${_CA_CREATED}" = "true" ]; then
-        _container=$(hostname)
         echo ""
         echo "  ┌─────────────────────────────────────────────────────────────┐"
         echo "  │  To remove browser certificate warnings (one-time setup):   │"
         echo "  │                                                             │"
-        echo "  │  1. Copy the CA root to your host:                          │"
-        echo "  │     docker cp ${_container}:/certs/mkcert-ca/rootCA.pem .   │"
+        echo "  │  Import .docker/mkcert-ca/rootCA.pem into your trust store  │"
         echo "  │                                                             │"
-        echo "  │  2. Import rootCA.pem into your OS/browser trust store      │"
-        echo "  │     macOS:  open rootCA.pem  (add to Keychain, set Always   │"
-        echo "  │             Trust) or: sudo security add-trusted-cert -d    │"
-        echo "  │             -r trustRoot -k /Library/Keychains/System.keychain rootCA.pem │"
-        echo "  │     Linux:  sudo cp rootCA.pem /usr/local/share/ca-certificates/mkcert-ca.crt │"
-        echo "  │             && sudo update-ca-certificates                  │"
-        echo "  │     Windows: certutil -addstore Root rootCA.pem             │"
+        echo "  │  macOS:  open .docker/mkcert-ca/rootCA.pem  (add to        │"
+        echo "  │          Keychain, set Always Trust) or:                    │"
+        echo "  │          sudo security add-trusted-cert -d -r trustRoot    │"
+        echo "  │          -k /Library/Keychains/System.keychain \\            │"
+        echo "  │          .docker/mkcert-ca/rootCA.pem                      │"
+        echo "  │  Linux:  sudo cp .docker/mkcert-ca/rootCA.pem \\            │"
+        echo "  │          /usr/local/share/ca-certificates/mkcert-ca.crt    │"
+        echo "  │          && sudo update-ca-certificates                    │"
+        echo "  │  Windows: certutil -addstore Root \\                        │"
+        echo "  │           .docker/mkcert-ca/rootCA.pem                     │"
         echo "  │                                                             │"
-        echo "  │  The CA persists across container restarts (named volume).  │"
+        echo "  │  The CA persists in .docker/mkcert-ca/ (survives rebuilds). │"
         echo "  └─────────────────────────────────────────────────────────────┘"
         echo ""
     fi

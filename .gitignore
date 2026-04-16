@@ -17,6 +17,9 @@ memory.json
 # Docker-created mount target
 opencode-docker/
 
+# mkcert CA root (generated at first TLS startup)
+.docker/mkcert-ca/
+
 # OS
 .DS_Store
 
