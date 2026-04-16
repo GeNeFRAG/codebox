@@ -422,7 +422,7 @@ OPENCODE_TUI_THEME=catppuccin
 | `grafana` | ❌ | Grafana dashboards — runs in Docker, requires `GRAFANA_API_KEY` |
 | `playwright` | ❌ | Browser automation |
 | `git` | ❌ | Git operations via MCP |
-| `docker` | ❌ | Docker container/image management — runs in Docker, requires mounted socket |
+| `docker` | ❌ | Docker container/image management — runs as Node process, requires mounted socket |
 
 Enabled servers run as Node processes inside the container. Docker-based servers (github, atlassian, grafana) launch separate containers via the mounted Docker socket. To enable a disabled server, set `"enabled": true` in the template.
 
