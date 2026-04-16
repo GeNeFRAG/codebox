@@ -249,7 +249,7 @@ The same MCP servers listed in [MCP Servers](#mcp-servers) are pre-configured fo
 
 ### tmux adaptations for Claude Code
 
-When running Claude Code in `tmux` mode, the status bar uses a simplified display (`claude-code │ branch`) — model and context-size details are unavailable because Claude Code manages its own model selection. The agent monitor keybindings (`Option-m`, `Option-Shift-m`) show an informational message instead.
+When running Claude Code in `tmux` mode, the status bar uses a simplified display (`claude-code │ branch`) — model and context-size details are unavailable because Claude Code manages its own model selection internally. You can set the default model via `CLAUDE_CODE_MODEL` in `.env` (e.g. `claude-opus-4-6`). The agent monitor keybindings (`Option-m`, `Option-Shift-m`) show an informational message instead.
 
 ## Multi-Repo Setup
 
@@ -309,6 +309,7 @@ services:
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Anthropic API key. Falls back to `LLM_API_KEY` if not set |
 | `OPENCODE_APP` | Set to `claude-code` |
+| `CLAUDE_CODE_MODEL` | *(Optional)* Default model (e.g. `claude-opus-4-6`). Exported as `CLAUDE_MODEL` at runtime |
 | `ANTHROPIC_BASE_URL` | *(Optional)* Custom/proxy endpoint. Falls back to `LLM_BASE_URL` if not set |
 
 > **Note:** Do not set `OPENCODE_MODE` for Claude Code — only `tui` and `tmux` are valid; `web` is a fatal error.
@@ -341,6 +342,7 @@ services:
 | `OPENCODE_TUI_ARGS` | Extra arguments passed to `ttyd` when `OPENCODE_MODE=tui` or `tmux` |
 | `TZ` | Timezone for timestamps in the agent monitor and tmux status bar (default: `UTC`) |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude Code. Falls back to `LLM_API_KEY` if not set |
+| `CLAUDE_CODE_MODEL` | Default model for Claude Code (e.g. `claude-opus-4-6`, `claude-sonnet-4-6`). Exported as `CLAUDE_MODEL` at runtime. Leave unset to use Claude Code's built-in default. Claude Code only |
 | `ANTHROPIC_AUTH_TOKEN` | Auth token for FlowCode. Falls back to `LLM_API_KEY` if not set |
 | `ANTHROPIC_BASE_URL` | Custom/proxy endpoint for Claude Code or FlowCode. Falls back to `LLM_BASE_URL` if not set |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
@@ -420,6 +422,7 @@ OPENCODE_TUI_THEME=catppuccin
 | `grafana` | ❌ | Grafana dashboards — runs in Docker, requires `GRAFANA_API_KEY` |
 | `playwright` | ❌ | Browser automation |
 | `git` | ❌ | Git operations via MCP |
+| `docker` | ❌ | Docker container/image management — runs in Docker, requires mounted socket |
 
 Enabled servers run as Node processes inside the container. Docker-based servers (github, atlassian, grafana) launch separate containers via the mounted Docker socket. To enable a disabled server, set `"enabled": true` in the template.
 
@@ -581,6 +584,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 - **MCP config** — `envsubst` on `templates/claude-code.mcp.json.template` → `claude-code-mcp.json`; passed via `--mcp-config`
 - **Settings** — Writes `/root/.claude/settings.json` with pre-approved tool permissions (`Bash(*)`, `Read(*)`, `Write(*)`, `Edit(*)`, `mcp__*`)
 - **Auth mapping** — Uses `ANTHROPIC_API_KEY` directly; falls back to `LLM_API_KEY`. Maps `LLM_BASE_URL` → `ANTHROPIC_BASE_URL` if `ANTHROPIC_BASE_URL` is not set
+- **Model mapping** — Exports `CLAUDE_CODE_MODEL` → `CLAUDE_MODEL` (Claude Code's env var for default model selection)
 - **Onboarding pre-seed** — Writes `/root/.claude/.config.json` to skip the setup wizard, API key approval prompt, and workspace trust dialog
 
 **FlowCode-specific steps (in `lib/config.sh`):**

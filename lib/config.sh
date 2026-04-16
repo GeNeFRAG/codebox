@@ -77,7 +77,13 @@ SETTINGS
         echo "  ✓ ANTHROPIC_BASE_URL configured (${ANTHROPIC_BASE_URL})"
     fi
 
-    # 5. Pre-seed .config.json to skip interactive onboarding/login and workspace trust
+    # 5. Map model: CLAUDE_CODE_MODEL → CLAUDE_MODEL (Claude Code's env var)
+    if [ -n "${CLAUDE_CODE_MODEL:-}" ]; then
+        export CLAUDE_MODEL="${CLAUDE_CODE_MODEL}"
+        echo "  ✓ Default model: ${CLAUDE_MODEL}"
+    fi
+
+    # 6. Pre-seed .config.json to skip interactive onboarding/login and workspace trust
     # Claude Code checks:
     #   - hasCompletedOnboarding → skips the setup wizard
     #   - customApiKeyResponses.approved (last 20 chars of key) → skips API key approval prompt

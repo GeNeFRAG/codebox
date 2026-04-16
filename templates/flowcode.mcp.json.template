@@ -115,6 +115,16 @@
       "enabled": false,
       "command": "playwright-mcp",
       "args": []
+    },
+    "docker": {
+      "type": "stdio",
+      "enabled": false,
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "mcp/docker"
+      ]
     }
   }
 }

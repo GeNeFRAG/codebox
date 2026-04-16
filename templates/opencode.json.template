@@ -470,6 +470,15 @@
       "command": [
         "playwright-mcp"
       ]
+    },
+    "docker": {
+      "type": "local",
+      "enabled": false,
+      "command": [
+        "docker", "run", "--rm", "-i",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "mcp/docker"
+      ]
     }
   }
 }
