@@ -6,6 +6,7 @@
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
+        "--label", "codebox.role=mcp",
         "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
         "-e", "SSL_CERT_FILE=/certs/ca-bundle.pem",
         "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
@@ -23,6 +24,7 @@
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
+        "--label", "codebox.role=mcp",
         "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
         "-e", "SSL_CERT_FILE=/certs/ca-bundle.pem",
         "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
@@ -40,6 +42,7 @@
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
+        "--label", "codebox.role=mcp",
         "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
         "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
         "-e", "CONFLUENCE_URL",
@@ -71,6 +74,7 @@
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
+        "--label", "codebox.role=mcp",
         "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
         "-e", "GRAFANA_URL",
         "-e", "GRAFANA_API_KEY",

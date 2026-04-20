@@ -8,6 +8,13 @@
 # ─── Docker socket check (for MCP servers) ────────────────────────
 if [ -S "/var/run/docker.sock" ]; then
     echo "  ✓ Docker socket available (MCP containers supported)"
+    # Kill any MCP containers left over from a previous CodeBox session so
+    # they don't duplicate when the agent spawns new ones on startup.
+    _stale=$(docker ps -q --filter label=codebox.role=mcp 2>/dev/null)
+    if [ -n "${_stale}" ]; then
+        echo "  ↻ Removing stale MCP containers from previous session"
+        echo "${_stale}" | xargs docker rm -f >/dev/null 2>&1 || true
+    fi
 else
     echo "  ⚠ Docker socket not mounted - Docker-based MCP servers will not work"
 fi
