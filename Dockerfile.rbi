@@ -193,10 +193,10 @@ WORKDIR /workspace
 
 # ─── Skills (baked into image) ─────────────────────────────────────
 # simplify + agent-browser: installed via npx skills add
-# cartography: copied from bundled oh-my-opencode-slim package
+# codemap: copied from bundled oh-my-opencode-slim package (was "cartography" before v1.0.0)
 RUN npx skills add https://github.com/brianlovin/claude-config --skill simplify -a '*' -y --global && \
     npx skills add https://github.com/vercel-labs/agent-browser --skill agent-browser -a '*' -y --global && \
-    cp -r /root/.config/opencode/node_modules/oh-my-opencode-slim/src/skills/cartography /root/.config/opencode/skills/cartography
+    cp -r /root/.config/opencode/node_modules/oh-my-opencode-slim/src/skills/codemap /root/.config/opencode/skills/codemap
 
 # ─── tmux configuration (TUI mode) ────────────────────────────────
 COPY tmux/tmux.conf /root/.tmux.conf

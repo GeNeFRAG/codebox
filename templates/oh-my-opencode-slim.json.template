@@ -31,7 +31,7 @@
       "oracle": {
         "model": "llm/claude-sonnet-4-6",
         "skills": [
-          "cartography"
+          "codemap"
         ],
         "mcps": [
           "sequential-thinking"
@@ -47,7 +47,7 @@
       "explorer": {
         "model": "llm/claude-sonnet-4-6",
         "skills": [
-          "cartography"
+          "codemap"
         ],
         "mcps": [
         ]
