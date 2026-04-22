@@ -20,6 +20,18 @@ if [ "${CODEBOX_APP}" = "claude-code" ]; then
     if [ -n "${CLAUDE_MODEL:-}" ]; then
         _claude_extra="${_claude_extra} --model ${CLAUDE_MODEL}"
     fi
+    if [ -n "${CLAUDE_CODE_PERMISSION_MODE:-}" ]; then
+        case "${CLAUDE_CODE_PERMISSION_MODE}" in
+            acceptEdits|auto|bypassPermissions|default|dontAsk|plan)
+                _claude_extra="${_claude_extra} --permission-mode ${CLAUDE_CODE_PERMISSION_MODE}"
+                echo "  ✓ Permission mode: ${CLAUDE_CODE_PERMISSION_MODE}"
+                ;;
+            *)
+                echo "  ⚠ Ignoring invalid CLAUDE_CODE_PERMISSION_MODE='${CLAUDE_CODE_PERMISSION_MODE}'"
+                echo "    Valid: acceptEdits, auto, bypassPermissions, default, dontAsk, plan"
+                ;;
+        esac
+    fi
     export CODEBOX_EXTRA_ARGS="${CODEBOX_EXTRA_ARGS:+${CODEBOX_EXTRA_ARGS} }${_claude_extra}"
 
     _app_ver=$("${APP_BIN}" --version 2>/dev/null || echo "unknown")

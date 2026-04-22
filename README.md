@@ -308,6 +308,7 @@ services:
 | `LLM_API_KEY` | Anthropic API key — mapped to `ANTHROPIC_API_KEY` at startup |
 | `CODEBOX_APP` | Set to `claude-code` |
 | `CLAUDE_CODE_MODEL` | *(Optional)* Default model (e.g. `claude-opus-4-6`). Exported as `CLAUDE_MODEL` at runtime |
+| `CLAUDE_CODE_PERMISSION_MODE` | *(Optional)* Starting permission mode: `plan`, `acceptEdits`, `bypassPermissions`, `default`. Use `plan` to force plan mode on every startup |
 | `LLM_BASE_URL` | *(Optional)* Custom/proxy endpoint — mapped to `ANTHROPIC_BASE_URL` at startup |
 
 > **Note:** Do not set `CODEBOX_MODE` for Claude Code — only `tui` and `tmux` are valid; `web` is a fatal error.
@@ -340,6 +341,7 @@ services:
 | `CODEBOX_TUI_ARGS` | Extra arguments passed to `ttyd` when `CODEBOX_MODE=tui` or `tmux` |
 | `TZ` | Timezone for timestamps in the agent monitor and tmux status bar (default: `UTC`) |
 | `CLAUDE_CODE_MODEL` | Default model for Claude Code (e.g. `claude-opus-4-6`, `claude-sonnet-4-6`). Exported as `CLAUDE_MODEL` at runtime. Leave unset to use Claude Code's built-in default. Claude Code only |
+| `CLAUDE_CODE_PERMISSION_MODE` | Starting permission mode for Claude Code: `plan`, `acceptEdits`, `bypassPermissions`, `default`. Set to `plan` to force plan mode on every startup (written to `settings.json` and passed via `--permission-mode`). Claude Code only |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
 | `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `true`). OpenCode only. Set `false` to connect directly to `LLM_BASE_URL`. |
@@ -605,7 +607,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 **Claude Code-specific steps (in `lib/config.sh`):**
 
 - **MCP config** — `envsubst` on `templates/claude-code.mcp.json.template` → `claude-code-mcp.json`; passed via `--mcp-config`
-- **Settings** — Writes `/root/.claude/settings.json` with pre-approved tool permissions (`Bash(*)`, `Read(*)`, `Write(*)`, `Edit(*)`, `mcp__*`)
+- **Settings** — Writes `/root/.claude/settings.json` with pre-approved tool permissions (`Bash(*)`, `Read(*)`, `Write(*)`, `Edit(*)`, `mcp__*`). If `CLAUDE_CODE_PERMISSION_MODE` is set, also writes `permissions.defaultMode` to pin the startup mode
 - **Auth mapping** — Maps `LLM_API_KEY` → `ANTHROPIC_API_KEY` and `LLM_BASE_URL` → `ANTHROPIC_BASE_URL` at startup
 - **Model mapping** — Exports `CLAUDE_CODE_MODEL` → `CLAUDE_MODEL` (Claude Code's env var for default model selection)
 - **Onboarding pre-seed** — Writes `/root/.claude/.config.json` to skip the setup wizard, API key approval prompt, and workspace trust dialog

@@ -37,24 +37,19 @@ _generate_claude_code_config() {
 
     # 2. Generate settings.json
     mkdir -p "${settings_dir}"
-    cat > "${settings_file}" <<'SETTINGS'
-{
-  "permissions": {
-    "allow": [
-      "Bash(*)",
-      "Read(*)",
-      "Write(*)",
-      "Edit(*)",
-      "mcp__*"
-    ],
-    "deny": []
-  },
-  "env": {
-    "BASH_DEFAULT_TIMEOUT_MS": "300000"
-  },
-  "autoUpdaterStatus": "disabled"
-}
-SETTINGS
+    # Validate permission mode for settings.json (narrower set than the CLI flag)
+    _settings_default_mode=""
+    case "${CLAUDE_CODE_PERMISSION_MODE:-}" in
+        acceptEdits|bypassPermissions|default|plan) _settings_default_mode="${CLAUDE_CODE_PERMISSION_MODE}" ;;
+    esac
+    jq -n --arg dm "${_settings_default_mode}" '{
+        permissions: (
+            { allow: ["Bash(*)","Read(*)","Write(*)","Edit(*)","mcp__*"], deny: [] }
+            + (if $dm != "" then { defaultMode: $dm } else {} end)
+        ),
+        env: { BASH_DEFAULT_TIMEOUT_MS: "300000" },
+        autoUpdaterStatus: "disabled"
+    }' > "${settings_file}"
     chmod 600 "${settings_file}"
     echo "  ✓ Claude Code settings written to ${settings_file}"
 
