@@ -154,23 +154,65 @@ WRAPPER
     done
 
 elif [ "${CODEBOX_MODE}" = "tui" ]; then
-    # ── TUI mode: app TUI served directly by ttyd ────────────────
+    # ── TUI mode: app served via ttyd + hidden tmux for session persistence ─
+    # Architecture: ttyd → wrapper script → tmux new/attach → app
+    #
+    # Same persistence approach as tmux mode: browser disconnects only
+    # detach the tmux client; the session and the app inside it keep
+    # running. Reopening the URL reattaches instantly — screen lock no
+    # longer resets the session.
+    #
+    # The status bar is hidden so the user sees only the app TUI; from
+    # the browser this is visually identical to the previous TUI mode.
     echo "→ Starting ${APP_TITLE_PREFIX} TUI via ttyd on 0.0.0.0:${CODEBOX_PORT:-3000}..."
     echo "  Access: ${_TTYD_PROTOCOL:-http}://localhost:${CODEBOX_PORT:-3000}"
+    echo "  Attach: docker exec -it <container> tmux attach -t codebox-tui"
     echo ""
 
-    # Restart loop with exponential backoff on consecutive failures.
+    # Write the TUI wrapper script. Uses 'WRAPPER' (quoted) heredoc so
+    # no variable expansion at write time — APP_BIN and CODEBOX_EXTRA_ARGS
+    # are read from the environment at runtime (both are already exported).
+    export CODEBOX_EXTRA_ARGS="${CODEBOX_EXTRA_ARGS:-}"
+    cat > /tmp/tui-wrapper.sh <<'WRAPPER'
+#!/bin/bash
+TMUX_SESSION="codebox-tui"
+
+# --run: launched inside the tmux pane to exec the actual app
+if [ "${1:-}" = "--run" ]; then
+    exec "${APP_BIN}" ${CODEBOX_EXTRA_ARGS}
+fi
+
+# Default: connect to or create the persistent TUI session
+if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    exec tmux -u attach -t "$TMUX_SESSION"
+fi
+
+COLS=$(tput cols  2>/dev/null || echo 220)
+ROWS=$(tput lines 2>/dev/null || echo 50)
+tmux -u new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
+    /tmp/tui-wrapper.sh --run
+tmux set-option -t "$TMUX_SESSION" status off
+exec tmux -u attach -t "$TMUX_SESSION"
+WRAPPER
+    chmod +x /tmp/tui-wrapper.sh
+
+    # ttyd serves the wrapper. The tmux session persists independently
+    # across ttyd restarts, so browser disconnects don't kill the app.
     _fail_count=0
     while true; do
+        if [ ! -x /tmp/tui-wrapper.sh ]; then
+            echo "  ✗ /tmp/tui-wrapper.sh missing or not executable — cannot start TUI session"
+            echo "    Container restart required to regenerate the wrapper script."
+            exit 1
+        fi
         ttyd \
             --port "${CODEBOX_PORT:-3000}" \
             --interface 0.0.0.0 \
             --writable \
-            --cwd /workspace \
             ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (tui)}" \
             ${CODEBOX_TUI_ARGS:-} \
-            "${APP_BIN}" ${CODEBOX_EXTRA_ARGS:-}
+            /tmp/tui-wrapper.sh
         _rc=$?
         if [ "${_rc}" -eq 0 ]; then _fail_count=0; else _fail_count=$((_fail_count + 1)); fi
         _sleep=$(( 3 * (1 << (_fail_count > 5 ? 5 : _fail_count)) ))
