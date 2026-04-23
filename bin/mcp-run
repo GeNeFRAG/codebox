@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Stdio-safe docker run wrapper for MCP servers.
+# Kills any prior instance with the same logical name before spawning,
+# so agent hard-kills (respawn-pane -k, ttyd crash, theme toggle) and
+# restart loops cannot leave orphan or duplicate containers behind.
+set -euo pipefail
+name="mcp-$1"; shift
+docker rm -f "$name" >/dev/null 2>&1 || true
+exec docker run -i --rm --name "$name" --label codebox.role=mcp "$@"
