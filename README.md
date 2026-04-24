@@ -156,6 +156,19 @@ The tmux prefix is **Ctrl-Space** (instead of the usual Ctrl-b). Key bindings:
 
 > **Note:** The `Ctrl-Space` prefix is intercepted by most browsers and ttyd, so the `m`/`M`/`s` monitor bindings use `Option-` root keys instead (no prefix needed). The pane/window bindings above work because `Ctrl-Space` + a letter typically passes through.
 
+#### Copying text to clipboard
+
+tmux's `mouse on` (enabled for wheel scrollback) captures drag events, so plain drag doesn't reach the browser. To copy text to your OS clipboard, hold a modifier while dragging the terminal pane:
+
+| OS | Modifier |
+|----|----------|
+| macOS | **Option (⌥)** |
+| Linux / Windows | **Shift** |
+
+The modifier bypasses xterm.js application-mouse-mode, triggers a native selection, and the browser auto-copies on release. HTTPS is required as a secure context (auto-provisioned by `lib/tls.sh`). Without the modifier, drag enters tmux copy-mode — `y` yanks into tmux's internal paste buffer (`prefix ]` to paste within tmux).
+
+The same modifier trick applies to **tui** mode whenever the inner app is in application-mouse-mode.
+
 #### Agent monitor
 
 The **status bar** shows session info on the left (`codebox │ branch │ model │ context-size`) and active subagent activity on the right (e.g. `2 ⚡explorer·fixer`) plus the local time. Press `Option-m` to open a live monitor pane at the bottom of the screen — it polls the SQLite DB and shows a color-coded feed of subagent lifecycle events: `▶ agent started` (with model name and timestamp) and `■ agent done` (with duration and token usage: in/out/cache). Press `Option-Shift-m` to open the same feed in a dedicated tmux window instead.
@@ -556,6 +569,7 @@ Also rename:
 | Need a shell | `./codebox.sh shell <service>` |
 | TUI: attach to tmux from host | `docker exec -it <container> tmux attach -t codebox` |
 | TUI: tmux key bindings not working | Use `Option-m` / `Option-s` root bindings (Mac); or try `Ctrl-Space` prefix (may be intercepted by browser/ttyd) |
+| TUI: can't copy text to OS clipboard | Hold **Option (⌥)** on macOS or **Shift** on Linux/Windows while dragging — see [Copying text to clipboard](#copying-text-to-clipboard) |
 | TUI: custom tmux config | Mount to `/root/.config/opencode/tmux.conf:ro` — applied at startup |
 | Claude Code: no API key error | Set `LLM_API_KEY` in `.env` — it is mapped to `ANTHROPIC_API_KEY` at startup. OAuth login does not work in headless Docker |
 | Claude Code: web mode fails | Set `CODEBOX_MODE=tui` or `CODEBOX_MODE=tmux` — web mode is not supported for Claude Code |

@@ -149,6 +149,7 @@ WRAPPER
             --writable \
             ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (tmux)}" \
+            -t macOptionClickForcesSelection=true \
             ${CODEBOX_TUI_ARGS:-} \
             /tmp/tmux-wrapper.sh
         _rc=$?
@@ -226,6 +227,7 @@ WRAPPER
             --writable \
             ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (tui)}" \
+            -t macOptionClickForcesSelection=true \
             ${CODEBOX_TUI_ARGS:-} \
             /tmp/tui-wrapper.sh
         _rc=$?
