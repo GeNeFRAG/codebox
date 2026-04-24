@@ -46,7 +46,6 @@ RUN npm install -g \
     @upstash/context7-mcp@2.1.2 \
     @modelcontextprotocol/server-sequential-thinking@2025.12.18 \
     mcp-time-server@1.0.1 \
-    @playwright/mcp@0.0.68 \
     playwright \
     @cyanheads/git-mcp-server@2.8.4 \
     @hypnosis/docker-mcp-server@1.4.1 \
@@ -147,13 +146,13 @@ RUN cp /usr/local/lib/node_modules/opencode-ai/bin/.opencode /usr/local/bin/open
     ln -sf ../lib/node_modules/@upstash/context7-mcp/dist/index.js /usr/local/bin/context7-mcp && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js /usr/local/bin/mcp-server-sequential-thinking && \
     ln -sf ../lib/node_modules/mcp-time-server/bin/mcp-time-server.js /usr/local/bin/mcp-time-server && \
-    ln -sf ../lib/node_modules/@playwright/mcp/cli.js /usr/local/bin/playwright-mcp && \
     ln -sf ../lib/node_modules/playwright/cli.js /usr/local/bin/playwright && \
     ln -sf ../lib/node_modules/@cyanheads/git-mcp-server/dist/index.js /usr/local/bin/git-mcp-server && \
     ln -sf ../lib/node_modules/@hypnosis/docker-mcp-server/dist/index.js /usr/local/bin/docker-mcp-server && \
     ln -sf ../lib/node_modules/serve/build/main.js /usr/local/bin/serve
 
-# ─── Playwright browser (Chromium headless + system libraries) ────────────────
+# ─── Playwright browsers (pre-installed; project-local installs reuse via PLAYWRIGHT_BROWSERS_PATH) ──
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 RUN playwright install --with-deps chromium
 
 # ─── Workspace and data directories ───────────────────────────────

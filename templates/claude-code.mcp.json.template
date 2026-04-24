@@ -104,11 +104,6 @@
       "type": "http",
       "url": "https://mcp.exa.ai/mcp"
     },
-    "playwright": {
-      "type": "stdio",
-      "command": "playwright-mcp",
-      "args": []
-    },
     "docker": {
       "type": "stdio",
       "command": "docker-mcp-server",

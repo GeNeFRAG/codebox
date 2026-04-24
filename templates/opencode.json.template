@@ -464,13 +464,6 @@
         "mcp-time-server"
       ]
     },
-    "playwright": {
-      "type": "local",
-      "enabled": false,
-      "command": [
-        "playwright-mcp"
-      ]
-    },
     "docker": {
       "type": "local",
       "enabled": false,
