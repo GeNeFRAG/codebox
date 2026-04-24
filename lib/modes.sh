@@ -94,6 +94,13 @@ else
     tmux -u new-session -d -s "$TMUX_SESSION" -n "$(basename "$APP_BIN")" -x "$COLS" -y "$ROWS" -c /workspace \
         "/tmp/tmux-wrapper.sh --loop"
     tmux source-file "${TMUX_THEME_DIR}/tmux-theme-${_init_theme}.conf" 2>/dev/null
+    # For Claude Code, intercept wheel events at the root binding level so
+    # they enter tmux copy mode (scrollback) instead of being forwarded to
+    # the app (which would cycle prompt history via its own mouse handler).
+    [ "${CODEBOX_APP:-opencode}" = "claude-code" ] && {
+        tmux bind -T root WheelUpPane   if-shell "#{pane_in_mode}" "send-keys -M" "copy-mode -e"
+        tmux bind -T root WheelDownPane if-shell "#{pane_in_mode}" "send-keys -M" ""
+    }
     exec tmux -u attach -t "$TMUX_SESSION"
 fi
 WRAPPER
@@ -187,11 +194,19 @@ if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
     exec tmux -u attach -t "$TMUX_SESSION"
 fi
 
-COLS=$(tput cols  2>/dev/null || echo 220)
+# Canvas is sized from the first attaching browser (tput cols/lines) then
+# pinned via window-size=manual so later clients (e.g. after screen lock)
+# can't reshape the TUI.
+COLS=$(tput cols  2>/dev/null || echo 200)
 ROWS=$(tput lines 2>/dev/null || echo 50)
 tmux -u new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
     /tmp/tui-wrapper.sh --run
+tmux set-option -t "$TMUX_SESSION" window-size manual
 tmux set-option -t "$TMUX_SESSION" status off
+[ "${CODEBOX_APP:-}" = "claude-code" ] && {
+    tmux bind -T root WheelUpPane   if-shell "#{pane_in_mode}" "send-keys -M" "copy-mode -e"
+    tmux bind -T root WheelDownPane if-shell "#{pane_in_mode}" "send-keys -M" ""
+}
 exec tmux -u attach -t "$TMUX_SESSION"
 WRAPPER
     chmod +x /tmp/tui-wrapper.sh
