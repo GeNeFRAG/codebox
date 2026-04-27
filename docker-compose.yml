@@ -98,6 +98,22 @@ services:
       - ./.docker/mkcert-ca:/certs/mkcert-ca
       # ─── .env file (reloaded on container restart) ────────
       - ./.env:/opt/opencode/.env:ro
+      # ─── Dev iteration: bind-mount scripts/templates so edits ────
+      # apply via `codebox.sh restart` (no rebuild needed).
+      - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+      - ./bin/mcp-run:/usr/local/bin/mcp-run:ro
+      - ./lib:/opt/opencode/lib:ro
+      - ./templates:/opt/opencode/templates:ro
+      - ./proxy:/opt/opencode/proxy:ro
+      - ./tmux/tmux.conf:/root/.tmux.conf:ro
+      - ./tmux/tmux-theme-dark.conf:/opt/opencode/tmux/tmux-theme-dark.conf:ro
+      - ./tmux/tmux-theme-light.conf:/opt/opencode/tmux/tmux-theme-light.conf:ro
+      - ./tmux/agent-monitor.sh:/opt/opencode/tmux/agent-monitor.sh:ro
+      - ./tmux/agent-monitor-toggle.sh:/opt/opencode/tmux/agent-monitor-toggle.sh:ro
+      - ./tmux/agent-status.sh:/opt/opencode/tmux/agent-status.sh:ro
+      - ./tmux/session-status.sh:/opt/opencode/tmux/session-status.sh:ro
+      - ./tmux/session-status-claude.sh:/opt/opencode/tmux/session-status-claude.sh:ro
+      - ./tmux/tmux-theme-toggle.sh:/opt/opencode/tmux/tmux-theme-toggle.sh:ro
 
 volumes:
   codebox-data-self:

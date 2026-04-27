@@ -78,7 +78,10 @@ _generate_claude_code_config() {
         echo "  ✓ Default model: ${CLAUDE_MODEL}"
     fi
 
-    # 6. Pre-seed .config.json to skip interactive onboarding/login and workspace trust
+    # 6. Disable experimental betas unless explicitly opted in
+    export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS="${CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS:-1}"
+
+    # 7. Pre-seed .config.json to skip interactive onboarding/login and workspace trust
     # Claude Code checks:
     #   - hasCompletedOnboarding → skips the setup wizard
     #   - customApiKeyResponses.approved (last 20 chars of key) → skips API key approval prompt

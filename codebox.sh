@@ -70,14 +70,14 @@ usage() {
     echo "Commands:"
     echo "  start [svc...]    Build and start services (default: all)"
     echo "  stop [svc...]     Stop services (default: all)"
-    echo "  restart [svc...]  Restart services"
+    echo "  restart [svc...]  Restart — picks up .env AND lib/templates/entrypoint/proxy/tmux edits (no build)"
     echo "  logs [svc]        Follow logs"
     echo "  shell <svc>       Open a shell in a service"
-    echo "  rebuild [svc...]  Force rebuild and start"
+    echo "  rebuild [svc...]  Rebuild image (use when Dockerfile or installed binaries change)"
     echo "  down              Stop and remove all containers"
     echo "  status            Show all services"
     echo "  urls              Show all running URLs"
-    echo "  nuke [svc...]     Rebuild with latest opencode-ai version"
+    echo "  nuke [svc...]     Full rebuild — pulls latest opencode-ai/claude-code release"
     echo "  version [svc]     Show current opencode-ai version in container"
     echo ""
     echo "Services are defined in docker-compose.yml and docker-compose.override.yml"
@@ -133,7 +133,8 @@ case "${1:-help}" in
         shift
         _preflight
         echo -e "${YELLOW}Rebuilding...${NC}"
-        $COMPOSE build --build-arg CACHEBUST_CODEBOX="$(date +%s)" "$@"
+        echo -e "${CYAN}Tip: use 'nuke' to pull the latest opencode-ai/claude-code release.${NC}"
+        $COMPOSE build "$@"
         $COMPOSE up -d --force-recreate "$@"
         ;;
     status)
