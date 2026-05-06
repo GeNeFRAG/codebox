@@ -1,0 +1,5 @@
+# SC1091: sourced files are resolved at runtime by entrypoint.sh, not statically
+disable=SC1091
+# Enable following sourced files when they can be resolved (overrides SC1091 per-file)
+external-sources=true
+severity=warning

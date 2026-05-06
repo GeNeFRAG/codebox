@@ -1,2 +1,34 @@
+# Secrets
 .env
 *.key
+*.pem
+ca-bundle.*
+
+# Git history (not needed in build context)
+.git/
+
+# Personal compose overrides and local config
+docker-compose.override.yml
+.docker/mkcert-ca/
+
+# Documentation (not COPYd by Dockerfile)
+*.md
+LICENSE
+
+# Agent runtime dirs (gitignored, not part of the image)
+.claude/
+.opencode/
+_bmad/
+_bmad-output/
+logs/
+
+# Editor / OS
+.vscode/
+.DS_Store
+
+# OpenCode runtime artifacts
+opencode.json
+auth.json
+opencode.db
+memory.json
+opencode-docker/

@@ -38,3 +38,63 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 - The `oh-my-opencode-slim` plugin is an npm package baked into the image. Its config template lives at `templates/oh-my-opencode-slim.json.template`; the active config lives at `/root/.config/opencode/oh-my-opencode-slim.json`.
 - FlowCode is web-only (`CODEBOX_MODE` is forced to `web` if another value is set). Its config and credentials are written to `/root/.config/flowcode/` at startup.
 - The three agent binaries are all available in the container at `/usr/local/bin/`: `opencode`, `claude` (Claude Code), and `flowcode-server` (FlowCode). `CODEBOX_APP` selects which one runs.
+
+## Boot Flow
+
+`entrypoint.sh` sources `lib/` scripts in this order. Each phase is numbered to match the comments in `entrypoint.sh`:
+
+1. **Load env** — `lib/env.sh`: reads `.env`, applies deprecation shims (`OPENCODE_*` → `CODEBOX_*`).
+2. **Agent selection** — inlined: `CODEBOX_APP` (default: `opencode`) sets `APP_TITLE_PREFIX` and drives all downstream branches.
+3. **CA cert path** — inlined: runs `docker inspect` to resolve `CA_CERT_PATH` to the real host path so MCP sibling containers can mount it.
+4. **Cleanup trap** — `lib/proxy.sh` sourced here for `_cleanup`; SIGTERM/SIGINT kill the background proxy process.
+5. **Config generation** — `lib/config.sh`: dispatches to `_configure_opencode`, `_generate_claude_code_config`, or `_generate_flowcode_config` based on `CODEBOX_APP`.
+6. **Corporate CA cert** — `lib/ca-cert.sh`: installs CA bundle into the system trust store (no-op if `CA_CERT_PATH` is unset).
+7. **TLS cert for ttyd** — `lib/tls.sh`: generates a self-signed cert for the ttyd web terminal (tui/tmux modes only).
+8. **OpenCode plugins** — `lib/plugins.sh`: installs `oh-my-opencode-slim` from the npm cache baked into the image (OpenCode only).
+9. **System checks** — `lib/system-checks.sh`: Docker socket check, `git safe.directory`, workspace symlink, git credential validation.
+10. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `PREFILL_PROXY_ENABLED=true` only).
+11. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, refreshes model cache, guards FlowCode to web mode, sets theme and browser tab title.
+12. **Mode launch** — `lib/modes.sh`: enters the `web`/`tui`/`tmux` restart loop for the chosen `CODEBOX_MODE`. **Does not return.**
+
+## Dev Workflow
+
+`lib/`, `templates/`, `proxy/`, `tmux/`, `entrypoint.sh`, and `bin/mcp-run` are bind-mounted into the running container (see `docker-compose.yml` lines 103–116). Edits on the host take effect on the **next container restart** — no image rebuild needed for most changes.
+
+| Task | Command |
+|------|---------|
+| Edit a `lib/*.sh` script or template | `./codebox.sh restart codebox` |
+| Reload `.env` changes | `./codebox.sh restart codebox` |
+| Follow startup logs | `./codebox.sh logs codebox` |
+| Open a shell in the running container | `./codebox.sh shell codebox` |
+| Rebuild the image (Dockerfile change, new npm package) | `./codebox.sh rebuild codebox` |
+| Pull latest upstream agent + full rebuild | `./codebox.sh nuke codebox` |
+| Inspect generated configs in-container | `./codebox.sh shell codebox` then `cat /root/.config/opencode/opencode.json` or `ls /root/.claude/` |
+
+> `restart` does `docker compose up -d --force-recreate` — fast, no build. Use `rebuild` only when the *image* must change.
+
+## Recipe: Add an MCP Server
+
+MCP servers come in two forms:
+- **Stdio** (Node process inside the container) — add to templates with `"type": "stdio"` and a `npx`/`node` command.
+- **Docker-socket** (sibling container via `bin/mcp-run`) — wrap `docker run` args in `bin/mcp-run <name>` as the command; requires `/var/run/docker.sock`.
+
+Steps to wire a new server into all three agents:
+
+1. **OpenCode** — edit `templates/opencode.json.template`, add an entry under `mcpServers`.
+2. **Claude Code** — edit `templates/claude-code.mcp.json.template`, same structure.
+3. **FlowCode** — edit `templates/flowcode.mcp.json.template`, same structure.
+4. If the server needs env vars (API keys, URLs), add them to `.env.example` with a descriptive comment.
+5. If you added a new `$VAR` to a template, add it to the `envsubst` call in `lib/config.sh` for the relevant config function (`_generate_config`, `_generate_claude_code_config`, or `_generate_flowcode_config`).
+6. Apply: `./codebox.sh restart codebox` (templates are bind-mounted; no rebuild needed).
+
+> To add a server for **only one agent**, edit only that agent's template.
+
+## Recipe: Add an Agent Role (OpenCode only)
+
+Agent roles live in `templates/oh-my-opencode-slim.json.template` under `presets.default`. Each role defines its model, skills, and MCP servers. Claude Code and FlowCode do not use this system.
+
+1. Open `templates/oh-my-opencode-slim.json.template`.
+2. Copy an existing role (e.g. `orchestrator`) as a starting point.
+3. Add your role key under `presets.default` with `model`, `skills`, and `mcps` fields.
+4. Optionally add a fallback chain under `fallback.chains.<your-role>` (list of model IDs tried in order if the primary times out).
+5. Apply: `./codebox.sh restart codebox` (template is bind-mounted).
