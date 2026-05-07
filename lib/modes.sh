@@ -97,9 +97,12 @@ else
     # For Claude Code, intercept wheel events at the root binding level so
     # they enter tmux copy mode (scrollback) instead of being forwarded to
     # the app (which would cycle prompt history via its own mouse handler).
+    # -F flag is required so #{pane_in_mode} is evaluated as a tmux format
+    # condition (1=true/0=false) rather than run as a shell command (which
+    # would always fail and make WheelDown a no-op, trapping users in copy mode).
     [ "${CODEBOX_APP:-opencode}" = "claude-code" ] && {
-        tmux bind -T root WheelUpPane   if-shell "#{pane_in_mode}" "send-keys -M" "copy-mode -e"
-        tmux bind -T root WheelDownPane if-shell "#{pane_in_mode}" "send-keys -M" ""
+        tmux bind -T root WheelUpPane   if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-up"   "copy-mode -e \; send-keys -X -N 3 scroll-up"
+        tmux bind -T root WheelDownPane if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-down" ""
     }
     exec tmux -u attach -t "$TMUX_SESSION"
 fi
@@ -205,8 +208,8 @@ tmux -u new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
 tmux set-option -t "$TMUX_SESSION" window-size manual
 tmux set-option -t "$TMUX_SESSION" status off
 [ "${CODEBOX_APP:-}" = "claude-code" ] && {
-    tmux bind -T root WheelUpPane   if-shell "#{pane_in_mode}" "send-keys -M" "copy-mode -e"
-    tmux bind -T root WheelDownPane if-shell "#{pane_in_mode}" "send-keys -M" ""
+    tmux bind -T root WheelUpPane   if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-up"   "copy-mode -e \; send-keys -X -N 3 scroll-up"
+    tmux bind -T root WheelDownPane if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-down" ""
 }
 exec tmux -u attach -t "$TMUX_SESSION"
 WRAPPER
