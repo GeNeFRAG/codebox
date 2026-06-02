@@ -237,3 +237,18 @@ _configure_opencode() {
         echo "  ✓ Using host auth.json (no local auth configured)"
     fi
 }
+
+# ─── Generate atl config from env vars if the Docker mount didn't land ─────
+_generate_atl_config() {
+    local cfg="/root/.config/atl/config.yaml"
+    [[ -s "$cfg" ]] && return
+    [[ -z "$JIRA_URL" && -z "$CONFLUENCE_URL" ]] && return
+    mkdir -p "$(dirname "$cfg")"
+    {
+        [[ -n "$JIRA_URL" && -n "$JIRA_TOKEN" ]] && \
+            printf 'jira:\n  url: "%s"\n  token: "%s"\n' "$JIRA_URL" "$JIRA_TOKEN"
+        [[ -n "$CONFLUENCE_URL" && -n "$CONFLUENCE_TOKEN" ]] && \
+            printf 'confluence:\n  url: "%s"\n  token: "%s"\n' "$CONFLUENCE_URL" "$CONFLUENCE_TOKEN"
+    } > "$cfg"
+    echo "  ✓ atl config generated from environment"
+}

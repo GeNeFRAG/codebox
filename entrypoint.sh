@@ -75,6 +75,7 @@ elif [ "${CODEBOX_APP}" = "flowcode" ]; then
 else
     _configure_opencode
 fi
+_generate_atl_config
 
 # ─── 6. Corporate CA certificate ───────────────────────────────────
 # shellcheck source=lib/ca-cert.sh
