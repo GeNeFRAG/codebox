@@ -1,0 +1,12 @@
+{
+  "name": "codebox-host-exec",
+  "version": "1.0.0",
+  "description": "Host-side MCP server — lets the container's Claude Code run commands on the host machine",
+  "type": "module",
+  "scripts": {
+    "start": "node mcp-host-exec.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}

@@ -138,8 +138,13 @@ COPY templates/oh-my-opencode-slim.json.template /root/.config/opencode/oh-my-op
 # oh-my-opencode-slim's auto-update-checker can rm -rf and rebuild
 # node_modules at runtime, destroying the binary mid-session.
 # /usr/local/bin/opencode-go is immune to npm/bun operations.
-RUN cp /usr/local/lib/node_modules/opencode-ai/bin/.opencode /usr/local/bin/opencode-go && \
-    chmod +x /usr/local/bin/opencode-go && \
+# The binary name varies across opencode-ai releases (.opencode, opencode, etc.)
+# so we locate it by excluding JS files rather than hardcoding the name.
+RUN go_bin=$(find /usr/local/lib/node_modules/opencode-ai/bin -maxdepth 1 -type f \
+        ! -name '*.js' ! -name '*.mjs' ! -name '*.cjs' 2>/dev/null | head -1) && \
+    if [ -n "$go_bin" ]; then \
+        cp "$go_bin" /usr/local/bin/opencode-go && chmod +x /usr/local/bin/opencode-go; \
+    fi && \
     ln -sf /usr/local/lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode && \
     ln -sf /usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe /usr/local/bin/claude && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-memory/dist/index.js /usr/local/bin/mcp-server-memory && \
