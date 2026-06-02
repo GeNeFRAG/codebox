@@ -26,6 +26,24 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Clone atl source to a temp dir and export ATL_SRC_PATH for the Docker build.
+# Falls back silently if the repo is unreachable — the image will contain a stub.
+_clone_atl() {
+    local repo="${ATL_REPO_URL:-https://code.rbi.tech/raiffeisen/atl}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    echo -e "${CYAN}Cloning atl from ${repo}...${NC}"
+    if git clone --depth=1 --quiet "${repo}" "${tmp_dir}" 2>/dev/null; then
+        export ATL_SRC_PATH="${tmp_dir}"
+        # shellcheck disable=SC2064
+        trap "rm -rf '${tmp_dir}'" EXIT
+        echo -e "${GREEN}✓ atl source ready${NC}"
+    else
+        rm -rf "${tmp_dir}"
+        echo -e "${YELLOW}  Warning: could not clone atl — binary will not be available in image${NC}"
+    fi
+}
+
 # ─── Pre-flight: ensure host-side mount targets exist ─────────────
 # Docker bind-mounts to files that don't exist will silently create
 # empty *directories*, which confuses later reads. Worse, mounting
@@ -48,6 +66,8 @@ _preflight() {
 
     # GitHub Copilot config directory
     mkdir -p "${HOME}/.config/github-copilot" 2>/dev/null || true
+
+    _clone_atl
 
     # .env file — Docker bind-mounts create an empty directory if the
     # source file doesn't exist, which breaks env_file and .env reload.
@@ -157,7 +177,9 @@ case "${1:-help}" in
         echo ""
         echo -e "${GREEN}✓ Updated. Current versions:${NC}"
         for svc in $($COMPOSE ps --services 2>/dev/null); do
-            ver=$($COMPOSE exec -T "$svc" opencode --version 2>/dev/null || echo "unknown")
+            ver=$($COMPOSE exec -T "$svc" sh -c \
+              'for b in opencode-go opencode; do command -v "$b" >/dev/null 2>&1 && "$b" --version 2>/dev/null && break; done || echo "unknown"' \
+              2>/dev/null || echo "unknown")
             echo -e "  ${CYAN}${svc}${NC}: opencode-ai ${ver}"
         done
         ;;
@@ -172,7 +194,9 @@ case "${1:-help}" in
     version)
         shift
         for svc in ${@:-$($COMPOSE ps --services 2>/dev/null)}; do
-            ver=$($COMPOSE exec -T "$svc" opencode --version 2>/dev/null || echo "not running")
+            ver=$($COMPOSE exec -T "$svc" sh -c \
+              'for b in opencode-go opencode; do command -v "$b" >/dev/null 2>&1 && "$b" --version 2>/dev/null && break; done || echo "unknown"' \
+              2>/dev/null || echo "not running")
             echo -e "  ${CYAN}${svc}${NC}: opencode-ai ${ver}"
         done
         ;;

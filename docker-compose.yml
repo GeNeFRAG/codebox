@@ -16,8 +16,11 @@ x-codebox-common: &codebox-common
     dockerfile: ${DOCKERFILE:-Dockerfile}
     args:
       CODEBOX_VERSION: ${CODEBOX_VERSION:-latest}
+    additional_contexts:
+      atl: ${ATL_SRC_PATH:-.docker/empty-dir}
     secrets:
       - ca-cert
+      - atl-config
   restart: unless-stopped
   env_file:
     - .env
@@ -38,10 +41,18 @@ x-codebox-common: &codebox-common
     - ${GIT_CONFIG_WORK_PATH:-.docker/empty-file}:/root/.gitconfig-work:ro
     # ─── GitHub Copilot auth (reuse host token) ────────────────
     - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
+    # ─── atl — RBI Atlassian CLI runtime config ───────────────
+    - ${ATL_CONFIG_FILE:-.docker/empty-file}:/root/.config/atl/config.yaml:ro
     # ─── Host auth.json (merged at startup for Copilot etc.) ──
     - ${HOST_AUTH_JSON:-.docker/empty-file}:/opt/opencode/host-auth.json:ro
     # ─── CA certificate (optional, for corporate proxies) ─────
     - ${CA_CERT_PATH:-.docker/empty-file}:/certs/ca-bundle.pem:ro
+    # ─── Host bin directories (macOS; set paths in .env to enable) ──
+    - ${HOMEBREW_BIN:-.docker/empty-dir}:/host/homebrew-bin:ro
+    - ${HOMEBREW_SBIN:-.docker/empty-dir}:/host/homebrew-sbin:ro
+    - ${USR_LOCAL_BIN:-.docker/empty-dir}:/host/usr-local-bin:ro
+    - ${USR_LOCAL_SBIN:-.docker/empty-dir}:/host/usr-local-sbin:ro
+    - ${USER_LOCAL_BIN:-.docker/empty-dir}:/host/user-local-bin:ro
   healthcheck: &codebox-healthcheck
     interval: 30s
     timeout: 10s
@@ -91,9 +102,16 @@ services:
       - ${GIT_CONFIG_WORK_PATH:-.docker/empty-file}:/root/.gitconfig-work:ro
       # ─── GitHub Copilot auth (reuse host token) ────────────────
       - ${HOME}/.config/github-copilot:/root/.config/github-copilot:ro
+      # ─── atl — RBI Atlassian CLI runtime config ───────────────
+      - ${ATL_CONFIG_FILE:-.docker/empty-file}:/root/.config/atl/config.yaml:ro
       # ─── Host auth.json (merged at startup for Copilot etc.) ──
       - ${HOST_AUTH_JSON:-.docker/empty-file}:/opt/opencode/host-auth.json:ro
       - ${CA_CERT_PATH:-.docker/empty-file}:/certs/ca-bundle.pem:ro
+      - ${HOMEBREW_BIN:-.docker/empty-dir}:/host/homebrew-bin:ro
+      - ${HOMEBREW_SBIN:-.docker/empty-dir}:/host/homebrew-sbin:ro
+      - ${USR_LOCAL_BIN:-.docker/empty-dir}:/host/usr-local-bin:ro
+      - ${USR_LOCAL_SBIN:-.docker/empty-dir}:/host/usr-local-sbin:ro
+      - ${USER_LOCAL_BIN:-.docker/empty-dir}:/host/user-local-bin:ro
       # ─── mkcert CA root (bind mount survives docker compose down -v) ──
       - ./.docker/mkcert-ca:/certs/mkcert-ca
       # ─── .env file (reloaded on container restart) ────────
@@ -139,3 +157,5 @@ volumes:
 secrets:
   ca-cert:
     file: ${CA_CERT_PATH:-.docker/empty-file}
+  atl-config:
+    file: ${ATL_CONFIG_FILE:-.docker/empty-file}

@@ -52,6 +52,28 @@ RUN npm install -g \
     serve@14.2.3
 
 # ═══════════════════════════════════════════════════════════════════
+# atl-builder: RBI-internal Atlassian CLI (https://code.rbi.tech/raiffeisen/atl)
+# Source is passed via the `atl` build context (ATL_SRC_PATH in .env).
+# Falls back to a stub when ATL_SRC_PATH is not set or points to an empty dir.
+# ═══════════════════════════════════════════════════════════════════
+FROM golang:1.26-alpine AS atl-builder
+
+RUN apk add --no-cache ca-certificates
+RUN --mount=type=secret,id=ca-cert,required=false \
+    if [ -s /run/secrets/ca-cert ]; then \
+        cp /run/secrets/ca-cert /usr/local/share/ca-certificates/custom-ca.crt && \
+        update-ca-certificates; \
+    fi
+
+COPY --from=atl . /src/
+RUN if [ -f /src/go.mod ]; then \
+        cd /src && go build -o /usr/local/bin/atl . ; \
+    else \
+        printf '#!/bin/sh\necho "atl: set ATL_SRC_PATH in .env and rebuild"\nexit 1\n' \
+            > /usr/local/bin/atl ; \
+    fi && chmod +x /usr/local/bin/atl
+
+# ═══════════════════════════════════════════════════════════════════
 # Runtime stage: slim, no build tools
 # ═══════════════════════════════════════════════════════════════════
 FROM node:22-bookworm-slim AS runtime
@@ -113,6 +135,9 @@ RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}" \
     -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
 
+# ─── atl (RBI-internal Atlassian CLI, optional) ────────────────────
+COPY --from=atl-builder /usr/local/bin/atl /usr/local/bin/atl
+
 # ─── mkcert (locally-trusted TLS certs for ttyd clipboard support) ──
 ARG MKCERT_VERSION=1.4.4
 RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") && \
@@ -121,7 +146,7 @@ RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") && \
 
 # ─── Bun ───────────────────────────────────────────────────────────
 RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:$PATH"
+ENV PATH="/root/.bun/bin:$PATH:/host/homebrew-bin:/host/homebrew-sbin:/host/usr-local-bin:/host/usr-local-sbin:/host/user-local-bin"
 
 # ─── Copy compiled artifacts from builder ──────────────────────────
 COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
@@ -145,7 +170,11 @@ RUN go_bin=$(find /usr/local/lib/node_modules/opencode-ai/bin -maxdepth 1 -type 
     if [ -n "$go_bin" ]; then \
         cp "$go_bin" /usr/local/bin/opencode-go && chmod +x /usr/local/bin/opencode-go; \
     fi && \
-    ln -sf /usr/local/lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode && \
+    if [ -f /usr/local/lib/node_modules/opencode-ai/bin/opencode ]; then \
+        ln -sf /usr/local/lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode; \
+    elif [ -x /usr/local/bin/opencode-go ]; then \
+        ln -sf /usr/local/bin/opencode-go /usr/local/bin/opencode; \
+    fi && \
     ln -sf /usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe /usr/local/bin/claude && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-memory/dist/index.js /usr/local/bin/mcp-server-memory && \
     ln -sf ../lib/node_modules/@upstash/context7-mcp/dist/index.js /usr/local/bin/context7-mcp && \
