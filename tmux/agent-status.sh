@@ -11,13 +11,7 @@
 
 DB="/root/.local/share/opencode/opencode.db"
 
-# ─── Theme colors (dark/light) ────────────────────────────────────
-_theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
-if [ "$_theme" = "light" ]; then
-    _count="#8c6c3e"; _sep="#8990b3"; _name="#3760bf"
-else
-    _count="#e0af68"; _sep="#565f89"; _name="#a9b1d6"
-fi
+source /opt/opencode/tmux/theme-colors.sh
 
 # A session is active if its last assistant message has NOT completed:
 # either $.finish is NULL/tool-calls, or $.finish="stop" but

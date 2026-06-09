@@ -55,23 +55,9 @@ if [ "${CODEBOX_MODE}" = "tmux" ]; then
         echo "  ✓ Custom tmux.conf applied"
     fi
 
-    # ── Claude Code tmux adaptations ──────────────────────────────
-    # Create runtime copies of theme files in /tmp. For Claude Code,
-    # swap session-status.sh → session-status-claude.sh. This avoids
-    # mutating the baked-in /opt/opencode/ files (which would persist
-    # across container restarts and break if CODEBOX_APP changes).
-    # The tmux-theme-toggle.sh sources from THEME_DIR which we override
-    # via an exported env var that the wrapper and toggle script read.
-    if [ "${CODEBOX_APP}" = "claude-code" ]; then
-        for _theme_file in /opt/opencode/tmux/tmux-theme-dark.conf /opt/opencode/tmux/tmux-theme-light.conf; do
-            _basename=$(basename "${_theme_file}")
-            sed 's|/session-status\.sh|/session-status-claude.sh|g' \
-                "${_theme_file}" > "/tmp/${_basename}"
-        done
-        export TMUX_THEME_DIR="/tmp"
-    else
-        export TMUX_THEME_DIR="/opt/opencode/tmux"
-    fi
+    # session-status.sh now handles both OpenCode and Claude Code
+    # (checks CODEBOX_APP internally), so no theme file patching needed.
+    export TMUX_THEME_DIR="/opt/opencode/tmux"
 
     echo "→ Starting ${APP_TITLE_PREFIX} TUI via tmux + ttyd on 0.0.0.0:${CODEBOX_PORT:-3000}..."
     echo "  Access: ${_TTYD_PROTOCOL:-http}://localhost:${CODEBOX_PORT:-3000}"
