@@ -2,6 +2,36 @@
 # Launch loops for each supported mode: tmux, tui, web.
 # This is the final stage of the entrypoint — it does not return.
 
+_backoff_sleep() { echo $(( 3 * (1 << (${1:-0} > 5 ? 5 : ${1:-0})) )); }
+
+_serve_ttyd_loop() {
+    local wrapper_path="$1" mode_label="$2"
+    local _fail_count=0
+    while true; do
+        if [ ! -x "${wrapper_path}" ]; then
+            echo "  ✗ ${wrapper_path} missing or not executable — cannot start ${mode_label} session"
+            echo "    Container restart required to regenerate the wrapper script."
+            exit 1
+        fi
+        ttyd \
+            --port "${CODEBOX_PORT:-3000}" \
+            --interface 0.0.0.0 \
+            --writable \
+            ${_TTYD_SSL_FLAGS:-} \
+            -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (${mode_label})}" \
+            -t macOptionClickForcesSelection=true \
+            ${CODEBOX_TUI_ARGS:-} \
+            "${wrapper_path}"
+        _rc=$?
+        if [ "${_rc}" -eq 0 ]; then _fail_count=0; else _fail_count=$((_fail_count + 1)); fi
+        _sleep=$(_backoff_sleep "$_fail_count")
+        echo ""
+        echo "  ⟳ ttyd exited (rc=${_rc}). Restart #${_fail_count} in ${_sleep}s..."
+        echo ""
+        sleep "${_sleep}"
+    done
+}
+
 CODEBOX_MODE="${CODEBOX_MODE:-web}"
 TMUX_SESSION="codebox"
 
@@ -94,19 +124,7 @@ else
     tmux -u new-session -d -s "$TMUX_SESSION" -n "$(basename "$APP_BIN")" -x "$COLS" -y "$ROWS" -c /workspace \
         "/tmp/tmux-wrapper.sh --loop"
     tmux source-file "${TMUX_THEME_DIR}/tmux-theme-${_init_theme}.conf" 2>/dev/null
-    # For Claude Code, intercept wheel events at the root binding level so
-    # they enter tmux copy mode (scrollback) instead of being forwarded to
-    # the app (which would cycle prompt history via its own mouse handler).
-    # -F flag is required so #{pane_in_mode} is evaluated as a tmux format
-    # condition (1=true/0=false) rather than run as a shell command (which
-    # would always fail and make WheelDown a no-op, trapping users in copy mode).
-    [ "${CODEBOX_APP:-opencode}" = "claude-code" ] && {
-        tmux bind -T root WheelUpPane   if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-up"   "copy-mode -e"
-        tmux bind -T root WheelDownPane if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-down" ""
-        tmux bind C-r run-shell "kill -WINCH #{pane_pid} 2>/dev/null; sleep 0.05; kill -WINCH #{pane_pid} 2>/dev/null"
-        tmux set-hook -g client-resized  "run-shell -b 'kill -WINCH #{pane_pid} 2>/dev/null; sleep 0.05; kill -WINCH #{pane_pid} 2>/dev/null'"
-        tmux set-hook -g client-attached "run-shell -b 'sleep 0.2; kill -WINCH #{pane_pid} 2>/dev/null'"
-    }
+    [ "${CODEBOX_APP:-opencode}" = "claude-code" ] && source /opt/opencode/tmux/claude-bindings.sh
     exec tmux -u attach -t "$TMUX_SESSION"
 fi
 WRAPPER
@@ -141,31 +159,7 @@ WRAPPER
 
     # ttyd serves the wrapper. If ttyd crashes, restart it.
     # The tmux session persists independently across ttyd restarts.
-    _fail_count=0
-    while true; do
-        # Validate wrapper script still exists (e.g., /tmp cleanup)
-        if [ ! -x /tmp/tmux-wrapper.sh ]; then
-            echo "  ✗ /tmp/tmux-wrapper.sh missing or not executable — cannot start tmux session"
-            echo "    Container restart required to regenerate the wrapper script."
-            exit 1
-        fi
-        ttyd \
-            --port "${CODEBOX_PORT:-3000}" \
-            --interface 0.0.0.0 \
-            --writable \
-            ${_TTYD_SSL_FLAGS:-} \
-            -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (tmux)}" \
-            -t macOptionClickForcesSelection=true \
-            ${CODEBOX_TUI_ARGS:-} \
-            /tmp/tmux-wrapper.sh
-        _rc=$?
-        if [ "${_rc}" -eq 0 ]; then _fail_count=0; else _fail_count=$((_fail_count + 1)); fi
-        _sleep=$(( 3 * (1 << (_fail_count > 5 ? 5 : _fail_count)) ))
-        echo ""
-        echo "  ⟳ ttyd exited (rc=${_rc}). Restart #${_fail_count} in ${_sleep}s..."
-        echo ""
-        sleep "${_sleep}"
-    done
+    _serve_ttyd_loop /tmp/tmux-wrapper.sh "tmux"
 
 elif [ "${CODEBOX_MODE}" = "tui" ]; then
     # ── TUI mode: app served via ttyd + hidden tmux for session persistence ─
@@ -210,43 +204,14 @@ tmux -u new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
     /tmp/tui-wrapper.sh --run
 tmux set-option -t "$TMUX_SESSION" window-size latest
 tmux set-option -t "$TMUX_SESSION" status off
-[ "${CODEBOX_APP:-}" = "claude-code" ] && {
-    tmux bind -T root WheelUpPane   if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-up"   "copy-mode -e"
-    tmux bind -T root WheelDownPane if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-down" ""
-    tmux bind C-r run-shell "kill -WINCH #{pane_pid} 2>/dev/null; sleep 0.05; kill -WINCH #{pane_pid} 2>/dev/null"
-    tmux set-hook -g client-resized  "run-shell -b 'kill -WINCH #{pane_pid} 2>/dev/null; sleep 0.05; kill -WINCH #{pane_pid} 2>/dev/null'"
-    tmux set-hook -g client-attached "run-shell -b 'sleep 0.2; kill -WINCH #{pane_pid} 2>/dev/null'"
-}
+[ "${CODEBOX_APP:-}" = "claude-code" ] && source /opt/opencode/tmux/claude-bindings.sh
 exec tmux -u attach -t "$TMUX_SESSION"
 WRAPPER
     chmod +x /tmp/tui-wrapper.sh
 
     # ttyd serves the wrapper. The tmux session persists independently
     # across ttyd restarts, so browser disconnects don't kill the app.
-    _fail_count=0
-    while true; do
-        if [ ! -x /tmp/tui-wrapper.sh ]; then
-            echo "  ✗ /tmp/tui-wrapper.sh missing or not executable — cannot start TUI session"
-            echo "    Container restart required to regenerate the wrapper script."
-            exit 1
-        fi
-        ttyd \
-            --port "${CODEBOX_PORT:-3000}" \
-            --interface 0.0.0.0 \
-            --writable \
-            ${_TTYD_SSL_FLAGS:-} \
-            -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (tui)}" \
-            -t macOptionClickForcesSelection=true \
-            ${CODEBOX_TUI_ARGS:-} \
-            /tmp/tui-wrapper.sh
-        _rc=$?
-        if [ "${_rc}" -eq 0 ]; then _fail_count=0; else _fail_count=$((_fail_count + 1)); fi
-        _sleep=$(( 3 * (1 << (_fail_count > 5 ? 5 : _fail_count)) ))
-        echo ""
-        echo "  ⟳ ttyd exited (rc=${_rc}). Restart #${_fail_count} in ${_sleep}s..."
-        echo ""
-        sleep "${_sleep}"
-    done
+    _serve_ttyd_loop /tmp/tui-wrapper.sh "tui"
 
 else
     # ── Web mode (default) ───────────────────────────────────────
@@ -265,7 +230,7 @@ else
             "${APP_BIN}"
             _rc=$?
             if [ "${_rc}" -eq 0 ]; then _fail_count=0; else _fail_count=$((_fail_count + 1)); fi
-            _sleep=$(( 3 * (1 << (_fail_count > 5 ? 5 : _fail_count)) ))
+            _sleep=$(_backoff_sleep "$_fail_count")
             echo ""
             echo "  ⟳ FlowCode exited (rc=${_rc}). Restart #${_fail_count} in ${_sleep}s..."
             echo ""
@@ -286,7 +251,7 @@ else
             ${CODEBOX_EXTRA_ARGS:-}
         _rc=$?
         if [ "${_rc}" -eq 0 ]; then _fail_count=0; else _fail_count=$((_fail_count + 1)); fi
-        _sleep=$(( 3 * (1 << (_fail_count > 5 ? 5 : _fail_count)) ))
+        _sleep=$(_backoff_sleep "$_fail_count")
         echo ""
         echo "  ⟳ opencode web exited (rc=${_rc}). Restart #${_fail_count} in ${_sleep}s..."
         echo ""

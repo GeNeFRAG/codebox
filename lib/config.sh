@@ -7,10 +7,12 @@ DATA_DIR="/root/.local/share/opencode"
 TEMPLATE="/opt/opencode/templates/opencode.json.template"
 CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 
+_ENVSUBST_VARS_MCP='${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}'
+_ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_TUI_THEME}'
+
 # ─── Reusable config generation (called on startup + proxy fallback) ─
 _generate_config() {
-    envsubst '${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_TUI_THEME} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${CA_CERT_PATH} ${ATLASSIAN_TOOLSETS}' \
-        < "${TEMPLATE}" > "${CONFIG_FILE}"
+    envsubst "${_ENVSUBST_VARS_OPENCODE}" < "${TEMPLATE}" > "${CONFIG_FILE}"
     chmod 600 "${CONFIG_FILE}"
     if [ ! -s "${CONFIG_FILE}" ]; then
         echo "  ✗ FATAL: Config generation failed (${CONFIG_FILE} is empty)"
@@ -27,8 +29,7 @@ _generate_claude_code_config() {
 
     # 1. Generate MCP config from template
     if [ -f "${mcp_template}" ]; then
-        envsubst '${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}' \
-            < "${mcp_template}" > "${mcp_config}"
+        envsubst "${_ENVSUBST_VARS_MCP}" < "${mcp_template}" > "${mcp_config}"
         chmod 600 "${mcp_config}"
         echo "  ✓ Claude Code MCP config written to ${mcp_config}"
     else
@@ -132,8 +133,7 @@ _generate_flowcode_config() {
     # 1. Generate config.json — wrap the MCP server list in {"mcpServers": ...}
     #    using the same template as Claude Code (same MCP stdio/http schema).
     if [ -f "${mcp_template}" ]; then
-        envsubst '${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}' \
-            < "${mcp_template}" > "${config_file}"
+        envsubst "${_ENVSUBST_VARS_MCP}" < "${mcp_template}" > "${config_file}"
         chmod 600 "${config_file}"
         echo "  ✓ FlowCode config (MCP servers) written to ${config_file}"
     else

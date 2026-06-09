@@ -109,7 +109,7 @@ fi
 # opencode caches provider model lists locally. After a container rebuild
 # the cache may be stale, causing ProviderModelNotFoundError for newly
 # available models. Refresh asynchronously so it doesn't delay startup.
-if [ "${OPENCODE_APP}" = "opencode" ] && [ -x "${OPENCODE_BIN_PATH:-}" ]; then
+if [ "${CODEBOX_APP}" = "opencode" ] && [ -x "${OPENCODE_BIN_PATH:-}" ]; then
     (
         "${OPENCODE_BIN_PATH}" models --refresh >/dev/null 2>&1 \
             && echo "  ✓ Model cache refreshed" \
@@ -127,7 +127,7 @@ fi
 # ─── Record startup timestamp (ms) for status bar freshness ───────
 # Status scripts use this to ignore sessions from previous container
 # lifecycles — avoids showing stale model/token data after a rebuild.
-date +%s%3N > /tmp/.codebox-startup-ts
+date +%s%3N > /tmp/.opencode-startup-ts
 
 # ─── Initialize theme flag (dark by default, persists across reconnects) ─
 # CODEBOX_THEME env var allows setting initial theme via .env.
