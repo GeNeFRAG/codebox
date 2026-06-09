@@ -64,56 +64,11 @@ if [ "${CODEBOX_MODE}" = "tmux" ]; then
     echo "  Attach: docker exec -it <container> tmux attach -t ${TMUX_SESSION}"
     echo ""
 
-    # Write the tmux wrapper script. ttyd executes this on each browser
-    # connection. Terminal dimensions are already correct at this point.
-    # Uses 'WRAPPER' (quoted) heredoc so no variable expansion at write time —
-    # APP_BIN and CODEBOX_EXTRA_ARGS are read from the environment
-    # at runtime (both are already exported). No envsubst needed.
     export CODEBOX_EXTRA_ARGS="${CODEBOX_EXTRA_ARGS:-}"
-    cat > /tmp/tmux-wrapper.sh <<'WRAPPER'
-#!/bin/bash
-TMUX_SESSION="codebox"
-
-if [ "${1:-}" = "--loop" ]; then
-    # Read theme at launch time (not just at container start) so that
-    # respawns after theme toggle pick up the new COLORFGBG value.
-    _theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
-    if [ "$_theme" = "light" ]; then
-        export COLORFGBG="0;15"
-    else
-        export COLORFGBG="15;0"
-    fi
-    # On respawn (pane-died), pass --continue to resume the last session
-    # instead of starting a new one. Only applies to OpenCode (Claude Code
-    # manages its own session state and does not support this flag).
-    _continue_flag=""
-    if [ "${CODEBOX_APP:-opencode}" = "opencode" ] && [ "${2:-}" = "--respawn" ]; then
-        _continue_flag="--continue"
-    fi
-    exec "${APP_BIN}" ${_continue_flag} ${CODEBOX_EXTRA_ARGS}
-fi
-
-if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-    exec tmux -u attach -t "$TMUX_SESSION"
-else
-    # Apply initial theme to the outer terminal BEFORE creating the
-    # tmux session, so lipgloss detects the correct background.
-    _init_theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
-    if [ "$_init_theme" = "light" ]; then
-        printf '\e]10;#3760bf\a'    # OSC 10: foreground
-        printf '\e]11;#d5d6db\a'    # OSC 11: background
-        printf '\e]12;#2e7de9\a'    # OSC 12: cursor
-    fi
-
-    COLS=$(tput cols  2>/dev/null || echo 180)
-    ROWS=$(tput lines 2>/dev/null || echo 50)
-    tmux -u new-session -d -s "$TMUX_SESSION" -n "$(basename "$APP_BIN")" -x "$COLS" -y "$ROWS" -c /workspace \
-        "/tmp/tmux-wrapper.sh --loop"
-    tmux source-file "${TMUX_THEME_DIR}/tmux-theme-${_init_theme}.conf" 2>/dev/null
-    [ "${CODEBOX_APP:-opencode}" = "claude-code" ] && source /opt/opencode/tmux/claude-bindings.sh
-    exec tmux -u attach -t "$TMUX_SESSION"
-fi
-WRAPPER
+    cp /opt/opencode/tmux/tmux-wrapper.sh /tmp/tmux-wrapper.sh || {
+        echo "  ✗ FATAL: could not copy tmux-wrapper.sh from /opt/opencode/tmux/"
+        exit 1
+    }
     chmod +x /tmp/tmux-wrapper.sh
 
     # ── Claude Code: suppress agent monitor keybindings after tmux session starts ──
@@ -163,36 +118,11 @@ elif [ "${CODEBOX_MODE}" = "tui" ]; then
     echo "  Attach: docker exec -it <container> tmux attach -t codebox-tui"
     echo ""
 
-    # Write the TUI wrapper script. Uses 'WRAPPER' (quoted) heredoc so
-    # no variable expansion at write time — APP_BIN and CODEBOX_EXTRA_ARGS
-    # are read from the environment at runtime (both are already exported).
     export CODEBOX_EXTRA_ARGS="${CODEBOX_EXTRA_ARGS:-}"
-    cat > /tmp/tui-wrapper.sh <<'WRAPPER'
-#!/bin/bash
-TMUX_SESSION="codebox-tui"
-
-# --run: launched inside the tmux pane to exec the actual app
-if [ "${1:-}" = "--run" ]; then
-    exec "${APP_BIN}" ${CODEBOX_EXTRA_ARGS}
-fi
-
-# Default: connect to or create the persistent TUI session
-if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-    exec tmux -u attach -t "$TMUX_SESSION"
-fi
-
-# Initial canvas size comes from the first attaching browser (tput
-# cols/lines). window-size=latest lets the canvas track later clients,
-# so resizing the browser reflows the TUI instead of clipping it.
-COLS=$(tput cols  2>/dev/null || echo 200)
-ROWS=$(tput lines 2>/dev/null || echo 50)
-tmux -u new-session -d -s "$TMUX_SESSION" -x "$COLS" -y "$ROWS" -c /workspace \
-    /tmp/tui-wrapper.sh --run
-tmux set-option -t "$TMUX_SESSION" window-size latest
-tmux set-option -t "$TMUX_SESSION" status off
-[ "${CODEBOX_APP:-}" = "claude-code" ] && source /opt/opencode/tmux/claude-bindings.sh
-exec tmux -u attach -t "$TMUX_SESSION"
-WRAPPER
+    cp /opt/opencode/tmux/tui-wrapper.sh /tmp/tui-wrapper.sh || {
+        echo "  ✗ FATAL: could not copy tui-wrapper.sh from /opt/opencode/tmux/"
+        exit 1
+    }
     chmod +x /tmp/tui-wrapper.sh
 
     # ttyd serves the wrapper. The tmux session persists independently

@@ -25,6 +25,9 @@ logs/
 # Editor / OS
 .vscode/
 .DS_Store
+*.swp
+*.swo
+*~
 
 # OpenCode runtime artifacts
 opencode.json

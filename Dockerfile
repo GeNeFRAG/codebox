@@ -207,8 +207,7 @@ RUN npx skills add https://github.com/brianlovin/claude-config --skill simplify 
 
 # ─── tmux configuration (TUI mode) ────────────────────────────────
 COPY tmux/tmux.conf /root/.tmux.conf
-COPY tmux/tmux-theme-dark.conf /opt/opencode/tmux/tmux-theme-dark.conf
-COPY tmux/tmux-theme-light.conf /opt/opencode/tmux/tmux-theme-light.conf
+COPY tmux/ /opt/opencode/tmux/
 
 # ─── Entrypoint and config ────────────────────────────────────────
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
@@ -216,20 +215,9 @@ COPY bin/mcp-run /usr/local/bin/mcp-run
 COPY lib/ /opt/opencode/lib/
 COPY templates/ /opt/opencode/templates/
 COPY proxy/prefill-proxy.mjs /opt/opencode/proxy/prefill-proxy.mjs
-COPY tmux/agent-monitor.sh /opt/opencode/tmux/agent-monitor.sh
-COPY tmux/agent-monitor-toggle.sh /opt/opencode/tmux/agent-monitor-toggle.sh
-COPY tmux/agent-status.sh /opt/opencode/tmux/agent-status.sh
-COPY tmux/session-status.sh /opt/opencode/tmux/session-status.sh
-COPY tmux/session-status-claude.sh /opt/opencode/tmux/session-status-claude.sh
-COPY tmux/tmux-theme-toggle.sh /opt/opencode/tmux/tmux-theme-toggle.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     /usr/local/bin/mcp-run \
-    /opt/opencode/tmux/agent-monitor.sh \
-    /opt/opencode/tmux/agent-monitor-toggle.sh \
-    /opt/opencode/tmux/agent-status.sh \
-    /opt/opencode/tmux/session-status.sh \
-    /opt/opencode/tmux/session-status-claude.sh \
-    /opt/opencode/tmux/tmux-theme-toggle.sh
+    && find /opt/opencode/tmux -name '*.sh' -exec chmod +x {} +
 
 # Port is set at runtime via CODEBOX_PORT (default 3000)
 # EXPOSE is omitted — each compose service maps its own port.
