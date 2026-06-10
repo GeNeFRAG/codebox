@@ -4,8 +4,63 @@
 
 _backoff_sleep() { echo $(( 3 * (1 << (${1:-0} > 5 ? 5 : ${1:-0})) )); }
 
+# Extract ttyd's built-in HTML and inject a CSS override to remove the 5px
+# terminal padding so the terminal fills the full browser viewport.
+_TTYD_INDEX="/tmp/ttyd-index.html"
+_generate_ttyd_index() {
+    # ttyd serves its HTML at "/" — start it briefly on a random port to grab it.
+    local _port _pid
+    _port=$(( RANDOM % 10000 + 50000 ))
+    ttyd --port "$_port" --interface 127.0.0.1 -- echo >/dev/null 2>&1 &
+    _pid=$!
+    # Wait for it to be ready (up to 2s)
+    for _i in $(seq 1 20); do
+        curl -s "http://127.0.0.1:${_port}/" -o "${_TTYD_INDEX}" 2>/dev/null && break
+        sleep 0.1
+    done
+    kill "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null
+
+    if [ ! -s "${_TTYD_INDEX}" ]; then
+        echo "  ! Could not extract ttyd HTML — fullscreen override not applied"
+        rm -f "${_TTYD_INDEX}"
+        return 1
+    fi
+
+    # Inject CSS + JS override right before </body>:
+    # 1. Remove the 5px terminal padding
+    # 2. Sync body/container background with the terminal's background color
+    #    so sub-pixel gaps from character-cell rounding are invisible.
+    cat >> "${_TTYD_INDEX}" <<'PATCH'
+<style>body,#terminal-container{background:#000!important}#terminal-container .terminal{padding:0!important;height:100%!important}</style>
+<script>
+(function(){
+  function sync(){
+    var v=document.querySelector(".xterm-viewport");
+    if(v&&v.style.backgroundColor){
+      document.body.style.backgroundColor=v.style.backgroundColor;
+      var c=document.getElementById("terminal-container");
+      if(c)c.style.backgroundColor=v.style.backgroundColor;
+    }
+  }
+  new MutationObserver(sync).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["style"]});
+  setInterval(sync,500);
+})();
+</script>
+PATCH
+    echo "  ✓ ttyd fullscreen index generated"
+}
+
 _serve_ttyd_loop() {
     local wrapper_path="$1" mode_label="$2"
+    local _index_flag=""
+    if [ -s "${_TTYD_INDEX}" ]; then
+        _index_flag="--index ${_TTYD_INDEX}"
+    fi
+    # Match xterm.js background to tmux theme so sub-pixel gaps are invisible
+    local _theme_bg="#1a1b26"
+    if [ "$(cat /tmp/.tmux-theme 2>/dev/null)" = "light" ]; then
+        _theme_bg="#d5d6db"
+    fi
     local _fail_count=0
     while true; do
         if [ ! -x "${wrapper_path}" ]; then
@@ -17,9 +72,11 @@ _serve_ttyd_loop() {
             --port "${CODEBOX_PORT:-3000}" \
             --interface 0.0.0.0 \
             --writable \
+            ${_index_flag} \
             ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (${mode_label})}" \
             -t macOptionClickForcesSelection=true \
+            -t "theme={\"background\":\"${_theme_bg}\"}" \
             ${CODEBOX_TUI_ARGS:-} \
             "${wrapper_path}"
         _rc=$?
@@ -36,6 +93,11 @@ CODEBOX_MODE="${CODEBOX_MODE:-web}"
 TMUX_SESSION="codebox"
 
 cd /workspace
+
+# Generate fullscreen ttyd index for tui/tmux modes
+if [ "${CODEBOX_MODE}" = "tui" ] || [ "${CODEBOX_MODE}" = "tmux" ]; then
+    _generate_ttyd_index
+fi
 
 if [ "${CODEBOX_MODE}" = "tmux" ]; then
     # ── tmux mode: run app inside tmux, served by ttyd ───────────
