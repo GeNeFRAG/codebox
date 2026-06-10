@@ -451,7 +451,7 @@
     "websearch": {
       "type": "local",
       "command": [
-        "npx", "-y", "mcp-duckduckgo"
+        "node", "/opt/opencode/bin/websearch-mcp.js"
       ]
     },
     "sequential-thinking": {

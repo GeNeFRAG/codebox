@@ -212,6 +212,7 @@ COPY tmux/ /opt/opencode/tmux/
 # ─── Entrypoint and config ────────────────────────────────────────
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY bin/mcp-run /usr/local/bin/mcp-run
+COPY bin/websearch-mcp.js /opt/opencode/bin/websearch-mcp.js
 COPY lib/ /opt/opencode/lib/
 COPY templates/ /opt/opencode/templates/
 COPY proxy/prefill-proxy.mjs /opt/opencode/proxy/prefill-proxy.mjs

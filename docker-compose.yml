@@ -120,6 +120,7 @@ services:
       # apply via `codebox.sh restart` (no rebuild needed).
       - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       - ./bin/mcp-run:/usr/local/bin/mcp-run:ro
+      - ./bin/websearch-mcp.js:/opt/opencode/bin/websearch-mcp.js:ro
       - ./lib:/opt/opencode/lib:ro
       - ./templates:/opt/opencode/templates:ro
       - ./proxy:/opt/opencode/proxy:ro

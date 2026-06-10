@@ -102,8 +102,8 @@
     },
     "websearch": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "mcp-duckduckgo"]
+      "command": "node",
+      "args": ["/opt/opencode/bin/websearch-mcp.js"]
     },
     "docker": {
       "type": "stdio",
