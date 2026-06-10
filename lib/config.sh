@@ -45,7 +45,7 @@ _generate_claude_code_config() {
     esac
     jq -n --arg dm "${_settings_default_mode}" '{
         permissions: (
-            { allow: ["Bash(*)","Read(*)","Write(*)","Edit(*)","mcp__*"], deny: [] }
+            { allow: ["Bash(*)","Read(*)","Write(*)","Edit(*)","mcp__websearch__*","mcp__context7__*","mcp__sequential-thinking__*","mcp__time__*","mcp__docker__*","mcp__github__*","mcp__atlassian__*","mcp__grafana__*"], deny: [] }
             + (if $dm != "" then { defaultMode: $dm } else {} end)
         ),
         env: { BASH_DEFAULT_TIMEOUT_MS: "300000" },
