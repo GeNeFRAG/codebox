@@ -10,7 +10,7 @@ Sits between OpenCode and the upstream LLM gateway (`LLM_BASE_URL`). Its sole jo
 - OpenCode's config (`opencode.json`) points at this address instead of `LLM_BASE_URL` when the proxy is active.
 - Enabled when `PREFILL_PROXY=true` (the default for OpenCode).
 - Disabled automatically if the LLM gateway health check fails at startup (falls back to direct connection).
-- Not used by Claude Code or FlowCode.
+- Not used by Claude Code.
 
 ## Lifecycle
 

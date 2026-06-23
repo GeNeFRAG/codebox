@@ -9,10 +9,6 @@
 x-codebox-common: &codebox-common
   build:
     context: .
-    # Public build (default) — no FlowCode support.
-    # RBI users who need CODEBOX_APP=flowcode: pass --dockerfile Dockerfile.rbi
-    # to codebox.sh, or override dockerfile in docker-compose.override.yml
-    # (see docker-compose.override.yml.example).
     dockerfile: ${DOCKERFILE:-Dockerfile}
     args:
       CODEBOX_VERSION: ${CODEBOX_VERSION:-latest}
@@ -141,12 +137,6 @@ volumes:
   #   if you encounter compatibility issues with stale session data.
   claude-code-data-self:
     name: claude-code-data-self
-  # FlowCode workspace volume — only mounted when CODEBOX_APP=flowcode.
-  # ⚠ IMPORTANT: Add `- flowcode-data-self:/var/flowcode/workspaces` to the
-  #   service's volumes in docker-compose.override.yml for persistent FlowCode
-  #   workspace and session data.
-  flowcode-data-self:
-    name: flowcode-data-self
 
 secrets:
   ca-cert:

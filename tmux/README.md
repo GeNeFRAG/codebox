@@ -23,4 +23,4 @@ Config files and runtime scripts for `CODEBOX_MODE=tmux`. Not used in `web` or `
 
 All scripts are bind-mounted from the host (`docker-compose.yml`), so edits apply after `./codebox.sh restart codebox`.
 
-The `agent-monitor.sh`, `agent-status.sh`, and `session-status.sh` scripts query OpenCode's SQLite database at `/root/.local/share/opencode/opencode.db`. They will produce no output (or errors) when `CODEBOX_APP=claude-code` or `CODEBOX_APP=flowcode`.
+The `agent-monitor.sh`, `agent-status.sh`, and `session-status.sh` scripts query OpenCode's SQLite database at `/root/.local/share/opencode/opencode.db`. They will produce no output (or errors) when `CODEBOX_APP=claude-code`.

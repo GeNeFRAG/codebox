@@ -1,6 +1,6 @@
 # CodeBox
 
-Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://github.com/anthropics/claude-code), or [FlowCode](https://flowcode.dev) — AI coding agents — entirely inside Docker, accessible from any browser. No local Node.js, no CLI install, no environment clutter. Pick a UI mode, point it at your LLM provider, supply an API key, and open `localhost:3000`. Run multiple repos side-by-side — each gets its own container, port, and data volumes.
+Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://github.com/anthropics/claude-code)— AI coding agents — entirely inside Docker, accessible from any browser. No local Node.js, no CLI install, no environment clutter. Pick a UI mode, point it at your LLM provider, supply an API key, and open `localhost:3000`. Run multiple repos side-by-side — each gets its own container, port, and data volumes.
 
 **Coding agent** (set `CODEBOX_APP` in `.env`):
 
@@ -8,13 +8,12 @@ Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://g
 |-------|---------------|--------------|
 | **OpenCode** (default) | `opencode` | [OpenCode AI](https://github.com/opencode-ai/opencode) — supports `web`, `tui`, and `tmux` modes |
 | **Claude Code** | `claude-code` | [Anthropic Claude Code](https://github.com/anthropics/claude-code) — supports `tui` and `tmux` modes only |
-| **FlowCode** | `flowcode` | [FlowCode (RBI)](https://flowcode.dev) — supports `web` mode only. **Requires `Dockerfile.rbi`** (RBI Artifactory access) |
 
 **UI mode** (set `CODEBOX_MODE` in `.env`), all served in the browser:
 
 | Mode | Set in `.env` | What you get |
 |------|--------------|--------------|
-| **web** (default) | `CODEBOX_MODE=web` | OpenCode's built-in browser UI (OpenCode and FlowCode; not applicable for Claude Code) |
+| **web** (default) | `CODEBOX_MODE=web` | OpenCode's built-in browser UI (OpenCode only; not applicable for Claude Code) |
 | **tui** | `CODEBOX_MODE=tui` | The full terminal UI, rendered in the browser via [ttyd](https://github.com/tsl0922/ttyd) / xterm.js — identical to running the agent in a local terminal |
 | **tmux** | `CODEBOX_MODE=tmux` | Same terminal UI, wrapped in a persistent [tmux](https://github.com/tmux/tmux) session — survives browser disconnects, supports pane splitting, shell access alongside the agent, and a built-in agent activity monitor |
 
@@ -47,21 +46,6 @@ open http://localhost:3000
 
 > **Note:** Claude.ai OAuth login does **not** work in headless Docker. You must provide `LLM_API_KEY` — it is automatically mapped to `ANTHROPIC_API_KEY` at startup.
 
-### FlowCode
-
-> **RBI users only.** FlowCode is an RBI-internal product distributed via the RBI Artifactory registry (`artifacts.rbi.tech`). External users cannot build this target.
-
-```bash
-git clone <repo-url> && cd codebox
-cp .env.example .env
-vim .env          # Set LLM_API_KEY, LLM_BASE_URL, CODEBOX_APP=flowcode
-./codebox.sh --dockerfile Dockerfile.rbi start
-open http://localhost:3000
-```
-
-For multi-repo setups, add `dockerfile: Dockerfile.rbi` to your service's `build:` block in `docker-compose.override.yml` — see the FlowCode example in `docker-compose.override.yml.example`.
-
-> **Note:** FlowCode only supports `web` mode. Setting `CODEBOX_MODE=tui` or `tmux` is overridden to `web` automatically.
 
 > **Corporate proxy?** Copy your CA bundle to `./ca-bundle.pem` and set `CA_CERT_PATH` in `.env`.
 
@@ -88,7 +72,6 @@ For multi-repo setups, add `dockerfile: Dockerfile.rbi` to your service's `build
 The `--dockerfile` / `-d` flag overrides which Dockerfile is used for all build operations in that invocation (default: `Dockerfile`):
 
 ```bash
-./codebox.sh -d Dockerfile.rbi start          # Build & start with FlowCode (RBI only)
 ./codebox.sh -d Dockerfile.rbi rebuild my-svc # Force rebuild using Dockerfile.rbi
 ./codebox.sh -d Dockerfile.rbi nuke           # Full rebuild + latest versions
 ```
@@ -97,9 +80,9 @@ The `--dockerfile` / `-d` flag overrides which Dockerfile is used for all build 
 
 ### web (default)
 
-Nothing to configure — `./codebox.sh start` launches OpenCode's browser UI on port 3000. This is the standard graphical interface with file trees, conversation panels, and tool output. FlowCode also runs in web mode (it is hardcoded and cannot be changed).
+Nothing to configure — `./codebox.sh start` launches OpenCode's browser UI on port 3000. This is the standard graphical interface with file trees, conversation panels, and tool output.
 
-> **Note:** `CODEBOX_MODE` is only a meaningful setting for OpenCode. For Claude Code only `tui` or `tmux` are valid (web mode is a fatal error). For FlowCode the value is always overridden to `web` regardless of what is set.
+> **Note:** `CODEBOX_MODE` is only a meaningful setting for OpenCode. For Claude Code only `tui` or `tmux` are valid (web mode is a fatal error).
 
 ### tui — terminal UI in the browser
 
@@ -193,7 +176,6 @@ Set `CODEBOX_APP=claude-code` in `.env` to run [Anthropic Claude Code](https://g
 
 ### Key differences from OpenCode
 
-| | OpenCode | Claude Code | FlowCode |
 |---|---------|-------------|---------|
 | **UI modes** | `web`, `tui`, `tmux` | `tui`, `tmux` only | `web` only |
 | **API key** | `LLM_API_KEY` | `LLM_API_KEY` → mapped to `ANTHROPIC_API_KEY` | `LLM_API_KEY` → mapped to `ANTHROPIC_AUTH_TOKEN` |
@@ -201,8 +183,6 @@ Set `CODEBOX_APP=claude-code` in `.env` to run [Anthropic Claude Code](https://g
 | **Prefill proxy** | ✅ Enabled | ✗ Not used | ✗ Not used |
 | **Model fallback** | ✅ `OPENCODE_MODEL_FALLBACK` | ✗ Not applicable | ✗ Not applicable |
 | **Agent monitor** | ✅ tmux status bar + pane | ✗ Not available | ✗ Not available |
-| **Data volume** | `/root/.local/share/opencode` | `/root/.claude` | `/root/.config/flowcode` |
-| **MCP servers** | Configured via `templates/opencode.json.template` | Configured via `templates/claude-code.mcp.json.template` | Configured via `templates/flowcode.mcp.json.template` |
 
 ### Setup
 
@@ -326,26 +306,16 @@ services:
 
 > **Note:** Do not set `CODEBOX_MODE` for Claude Code — only `tui` and `tmux` are valid; `web` is a fatal error.
 
-**For FlowCode** — set these in `.env`:
-
-| Variable | Description |
-|----------|-------------|
-| `LLM_API_KEY` | Auth token for the RBI GenAI Gateway — mapped to `ANTHROPIC_AUTH_TOKEN` at startup |
-| `CODEBOX_APP` | Set to `flowcode` |
-| `LLM_BASE_URL` | Gateway endpoint — mapped to `ANTHROPIC_BASE_URL` at startup |
-
-> **Note:** Do not set `CODEBOX_MODE` for FlowCode — it always runs in `web` mode regardless of what is set.
 
 <details>
 <summary><strong>All environment variables</strong></summary>
 
 | Variable | Description |
 |----------|-------------|
-| `CODEBOX_APP` | `opencode` (default) — OpenCode AI agent · `claude-code` — Anthropic Claude Code agent · `flowcode` — FlowCode (RBI) agent (web only) |
+| `CODEBOX_APP` | `opencode` (default) — OpenCode AI agent · `claude-code` — Anthropic Claude Code agent |
 | `CODEBOX_PORT` | Web UI / TUI port (default: `3000`) |
-| `CODEBOX_MODE` | OpenCode only — `web` (default) · `tui` · `tmux`. For Claude Code, only `tui`/`tmux` are valid (`web` is a fatal error at startup). For FlowCode, this variable is ignored — mode is always `web`. |
+| `CODEBOX_MODE` | OpenCode only — `web` (default) · `tui` · `tmux`. For Claude Code, only `tui`/`tmux` are valid (`web` is a fatal error at startup). |
 | `CODEBOX_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
-| `FLOWCODE_VERSION` | Pin FlowCode version for builds (default: `latest`). Used only with `Dockerfile.rbi` (RBI Artifactory access required) |
 | `CODEBOX_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime: `Ctrl-Space t` |
 | `OPENCODE_TUI_THEME` | OpenCode TUI color scheme (default: `opencode`). Built-in themes: `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix`. Change at runtime with `/theme`. OpenCode only |
 | `CODEBOX_TITLE` | Browser tab title for tui/tmux modes. Auto-detected from Compose service name if not set |
@@ -573,8 +543,6 @@ Also rename:
 | TUI: custom tmux config | Mount to `/root/.config/opencode/tmux.conf:ro` — applied at startup |
 | Claude Code: no API key error | Set `LLM_API_KEY` in `.env` — it is mapped to `ANTHROPIC_API_KEY` at startup. OAuth login does not work in headless Docker |
 | Claude Code: web mode fails | Set `CODEBOX_MODE=tui` or `CODEBOX_MODE=tmux` — web mode is not supported for Claude Code |
-| FlowCode: tui/tmux mode | FlowCode only supports `web` mode — `CODEBOX_MODE` is automatically overridden to `web` |
-| FlowCode: binary not found | You built with the public `Dockerfile`. Rebuild with `Dockerfile.rbi` (requires RBI Artifactory access) |
 | Claude Code: session data lost after restart | Mount a named volume to `/root/.claude` — see [Claude Code Mode](#claude-code-mode) |
 | Claude Code: stale session data after upgrade | Run `docker volume rm <claude-code-data-volume>` then restart |
 
@@ -604,9 +572,9 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 6. **Plugin install** (`lib/plugins.sh`) — Runs `npm install` in config dir if `package.json` exists (OpenCode only).
 7. **System checks** (`lib/system-checks.sh`) — Verifies Docker socket for MCP containers; marks `/workspace` as git safe.directory; validates `.git-credentials` and `.gitconfig-work` mounts; symlinks `/workspace` into `$HOME`.
 8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` if `PREFILL_PROXY=true` (OpenCode only).
-9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner, refreshes the OpenCode model cache in the background, enforces mode constraints (FlowCode is web-only), and initialises the UI theme flag.
+9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner, refreshes the OpenCode model cache in the background and initialises the UI theme flag.
 10. **Mode launch** (`lib/modes.sh`) — Reads `CODEBOX_MODE` (default `web`):
-    - `web` — starts the agent in a restart loop on `0.0.0.0:${CODEBOX_PORT:-3000}` (OpenCode and FlowCode; not supported for Claude Code)
+    - `web` — starts the agent in a restart loop on `0.0.0.0:${CODEBOX_PORT:-3000}` (OpenCode only; not supported for Claude Code)
     - `tui` — starts `ttyd` serving the agent TUI directly in a restart loop on the same port
     - `tmux` — creates a tmux session (`codebox`) running the TUI in a restart loop, then starts `ttyd` serving `tmux attach` on the same port. Browser opens a full xterm.js terminal with tmux; `docker exec` can also attach to the same session.
 
@@ -626,11 +594,6 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 - **Model mapping** — Exports `CLAUDE_CODE_MODEL` → `CLAUDE_MODEL` (Claude Code's env var for default model selection)
 - **Onboarding pre-seed** — Writes `/root/.claude/.config.json` to skip the setup wizard, API key approval prompt, and workspace trust dialog
 
-**FlowCode-specific steps (in `lib/config.sh`):**
-
-- **MCP config** — `envsubst` on `templates/flowcode.mcp.json.template` → `/root/.config/flowcode/config.json`
-- **Credentials** — Writes `/root/.config/flowcode/credentials.json` with `LLM_API_KEY` → `ANTHROPIC_AUTH_TOKEN` and `LLM_BASE_URL` → `ANTHROPIC_BASE_URL`
-- **GitHub token** — Maps `GITHUB_ENTERPRISE_TOKEN` or `GITHUB_PERSONAL_TOKEN` → `GH_TOKEN` for git operations in the FlowCode terminal
 
 </details>
 
@@ -654,12 +617,10 @@ Multi-stage build for a minimal image size:
 
 Two Dockerfiles are provided:
 
-- **`Dockerfile`** (public) — no FlowCode. Use this if you don't have RBI Artifactory access.
-- **`Dockerfile.rbi`** (RBI-internal) — identical to `Dockerfile` plus the FlowCode stage. Requires access to `artifacts.rbi.tech`.
+- **`Dockerfile`** (public)
 
-**Builder stage** — `node:22-bookworm-slim` with build tools. Installs `opencode-ai` (version set by `CODEBOX_VERSION` build arg, default `latest`), `@anthropic-ai/claude-code` (version set by `CLAUDE_CODE_VERSION` build arg, default `latest`), provider SDKs (`@ai-sdk/openai-compatible`, `@ai-sdk/groq`, `@openrouter/ai-sdk-provider`), and MCP servers globally. `Dockerfile.rbi` additionally pulls the FlowCode image (version set by `FLOWCODE_VERSION` build arg) from RBI Artifactory.
 
-**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `tini` (PID 1), `tmux`, Docker CLI, Bun, `python3` (for the cartography skill), and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks — `opencode` and `claude` (Claude Code) are available at `/usr/local/bin/`. `Dockerfile.rbi` additionally copies `flowcode-server` and its static assets. MCP servers start instantly with no registry checks.
+**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `tini` (PID 1), `tmux`, Docker CLI, Bun, `python3` (for the cartography skill), and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks — `opencode` and `claude` (Claude Code) are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
 
 </details>
 
@@ -671,7 +632,6 @@ Two Dockerfiles are provided:
 | `/workspace` | Project source code |
 | `/root/.local/share/opencode` | OpenCode data, auth, database |
 | `/root/.claude` | Claude Code session data, settings (when `CODEBOX_APP=claude-code`) |
-| `/root/.config/flowcode` | FlowCode config and credentials (when `CODEBOX_APP=flowcode`) |
 | `/root/.config/opencode/memory` | MCP memory persistence (all agents) |
 | `/root/.ssh` | SSH keys for git (ro) |
 | `/root/.gitconfig` | Git config (ro) |
@@ -688,8 +648,7 @@ Two Dockerfiles are provided:
 <summary><strong>Internals: Project Structure</strong></summary>
 
 ```
-├── Dockerfile                          # Public multi-stage build (opencode-ai + claude-code; no FlowCode)
-├── Dockerfile.rbi                      # RBI-internal build — extends Dockerfile with FlowCode stage (requires Artifactory)
+├── Dockerfile                          # Public multi-stage build
 ├── docker-compose.yml                  # Base service definition
 ├── docker-compose.override.yml.example # Template for your repos (includes Claude Code example)
 ├── docker-compose.override.yml         # Your repo services (gitignored)
@@ -710,7 +669,6 @@ Two Dockerfiles are provided:
 ├── templates/
 │   ├── opencode.json.template          # OpenCode config template (MCP servers, providers)
 │   ├── claude-code.mcp.json.template   # Claude Code MCP server config template
-│   ├── flowcode.mcp.json.template      # FlowCode MCP server config template
 │   └── oh-my-opencode-slim.json.template # Plugin preset config (baked into image at build)
 ├── proxy/
 │   └── prefill-proxy.mjs               # LLM proxy (strips prefill, OpenCode only)

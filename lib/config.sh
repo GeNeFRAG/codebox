@@ -1,5 +1,5 @@
 # ─── lib/config.sh ──────────────────────────────────────────────────────────
-# Config generation for all three coding agents: opencode, claude-code, flowcode.
+# Config generation for coding agents: opencode, claude-code.
 # Also handles auth.json writing and host-auth merging for opencode.
 
 CONFIG_DIR="/root/.config/opencode"
@@ -118,56 +118,6 @@ _generate_claude_code_config() {
         }' > "${config_json}"
         chmod 600 "${config_json}"
         echo "  ✓ Claude Code onboarding pre-seeded (/workspace trusted, no API key)"
-    fi
-}
-
-# ─── FlowCode config generation ──────────────────────────────────────
-_generate_flowcode_config() {
-    local config_dir="/root/.config/flowcode"
-    local config_file="${config_dir}/config.json"
-    local creds_file="${config_dir}/credentials.json"
-    local mcp_template="/opt/opencode/templates/flowcode.mcp.json.template"
-
-    mkdir -p "${config_dir}"
-
-    # 1. Generate config.json — wrap the MCP server list in {"mcpServers": ...}
-    #    using the same template as Claude Code (same MCP stdio/http schema).
-    if [ -f "${mcp_template}" ]; then
-        envsubst "${_ENVSUBST_VARS_MCP}" < "${mcp_template}" > "${config_file}"
-        chmod 600 "${config_file}"
-        echo "  ✓ FlowCode config (MCP servers) written to ${config_file}"
-    else
-        echo '{}' > "${config_file}"
-        chmod 600 "${config_file}"
-        echo "  ⚠ MCP template not found (${mcp_template}) — FlowCode will start without MCP servers"
-    fi
-
-    # 2. Generate credentials.json (map LLM_API_KEY/LLM_BASE_URL to FlowCode format)
-    local auth_token="${ANTHROPIC_AUTH_TOKEN:-${LLM_API_KEY:-}}"
-    local base_url="${ANTHROPIC_BASE_URL:-${LLM_BASE_URL:-}}"
-
-    if [ -n "${auth_token}" ] && [ -n "${base_url}" ]; then
-        jq -n --arg token "${auth_token}" --arg url "${base_url}" \
-            '{"anthropicToken": $token, "anthropicBaseUrl": $url}' \
-            > "${creds_file}"
-        chmod 600 "${creds_file}"
-        echo "  ✓ FlowCode credentials configured (gateway: ${base_url})"
-    elif [ -n "${auth_token}" ]; then
-        jq -n --arg token "${auth_token}" \
-            '{"anthropicToken": $token}' > "${creds_file}"
-        chmod 600 "${creds_file}"
-        echo "  ⚠ FlowCode credentials: token set but no base URL — will use default gateway"
-    else
-        echo "  ⚠ No auth token set — configure credentials via FlowCode's web UI settings"
-    fi
-
-    # 3. Map GitHub token for git operations in FlowCode's terminal
-    if [ -n "${GITHUB_ENTERPRISE_TOKEN:-}" ]; then
-        export GH_TOKEN="${GITHUB_ENTERPRISE_TOKEN}"
-        echo "  ✓ GH_TOKEN mapped from GITHUB_ENTERPRISE_TOKEN"
-    elif [ -n "${GITHUB_PERSONAL_TOKEN:-}" ]; then
-        export GH_TOKEN="${GITHUB_PERSONAL_TOKEN}"
-        echo "  ✓ GH_TOKEN mapped from GITHUB_PERSONAL_TOKEN"
     fi
 }
 

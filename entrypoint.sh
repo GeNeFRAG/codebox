@@ -23,12 +23,9 @@ LIB="/opt/opencode/lib"
 # CODEBOX_APP selects which coding agent to run:
 #   opencode    (default) — OpenCode AI agent
 #   claude-code           — Anthropic Claude Code agent
-#   flowcode              — FlowCode (RBI) AI agent — web mode only
 CODEBOX_APP="${CODEBOX_APP:-opencode}"
 if [ "${CODEBOX_APP}" = "claude-code" ]; then
     APP_TITLE_PREFIX="Claude Code"
-elif [ "${CODEBOX_APP}" = "flowcode" ]; then
-    APP_TITLE_PREFIX="FlowCode"
 else
     APP_TITLE_PREFIX="OpenCode"
 fi
@@ -66,11 +63,6 @@ if [ "${CODEBOX_APP}" = "claude-code" ]; then
     echo "→ Configuring Claude Code..."
     export PREFILL_PROXY_ENABLED=false
     _generate_claude_code_config
-
-elif [ "${CODEBOX_APP}" = "flowcode" ]; then
-    echo "→ Configuring FlowCode..."
-    export PREFILL_PROXY_ENABLED=false
-    _generate_flowcode_config
 
 else
     _configure_opencode

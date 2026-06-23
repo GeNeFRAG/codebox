@@ -198,24 +198,6 @@ else
         exit 1
     fi
 
-    if [ "${CODEBOX_APP}" = "flowcode" ]; then
-        echo "→ Starting FlowCode web on 0.0.0.0:${CODEBOX_PORT:-3000}..."
-        echo "  Access: http://localhost:${CODEBOX_PORT:-3000}"
-        echo ""
-
-        _fail_count=0
-        while true; do
-            "${APP_BIN}"
-            _rc=$?
-            if [ "${_rc}" -eq 0 ]; then _fail_count=0; else _fail_count=$((_fail_count + 1)); fi
-            _sleep=$(_backoff_sleep "$_fail_count")
-            echo ""
-            echo "  ⟳ FlowCode exited (rc=${_rc}). Restart #${_fail_count} in ${_sleep}s..."
-            echo ""
-            sleep "${_sleep}"
-        done
-    fi
-
     # OpenCode web mode
     echo "→ Starting opencode web on 0.0.0.0:${CODEBOX_PORT:-3000}..."
     echo "  Access: http://localhost:${CODEBOX_PORT:-3000}"

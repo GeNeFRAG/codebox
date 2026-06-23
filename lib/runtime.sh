@@ -1,7 +1,6 @@
 # ─── lib/runtime.sh ─────────────────────────────────────────────────────────
 # Resolves the app binary (APP_BIN), prints the startup banner, refreshes the
-# OpenCode model cache, initialises the UI theme, derives the browser tab title,
-# and enforces mode constraints (e.g. FlowCode is web-only).
+# OpenCode model cache, initialises the UI theme, and derives the browser tab title.
 
 # ── Resolve the app binary and export APP_BIN ─────────────────────
 if [ "${CODEBOX_APP}" = "claude-code" ]; then
@@ -41,37 +40,6 @@ if [ "${CODEBOX_APP}" = "claude-code" ]; then
     echo "╔══════════════════════════════════════════╗"
     echo "║     CodeBox — Claude Code       ║"
     echo "║     claude-code v${_app_ver}$(printf '%*s' "${_ver_pad}" '')║"
-    echo "╚══════════════════════════════════════════╝"
-    echo ""
-
-elif [ "${CODEBOX_APP}" = "flowcode" ]; then
-    FLOWCODE_BIN="/usr/local/bin/flowcode-server"
-    if [ -x "${FLOWCODE_BIN}" ]; then
-        export APP_BIN="${FLOWCODE_BIN}"
-        echo "  ✓ flowcode-server binary: ${FLOWCODE_BIN}"
-    else
-        echo "  ✗ FATAL: flowcode-server binary not found at ${FLOWCODE_BIN}"
-        echo "    FlowCode is an RBI-internal product and requires building with"
-        echo "    Dockerfile.rbi, which pulls from the RBI Artifactory registry."
-        echo "    If you have Artifactory access, rebuild with:"
-        echo "      docker compose build --build-arg dockerfile=Dockerfile.rbi"
-        echo "    Or set 'dockerfile: Dockerfile.rbi' in your docker-compose.override.yml."
-        exit 1
-    fi
-
-    # FlowCode runtime environment
-    export PORT="${CODEBOX_PORT:-3000}"
-    export FLOWCODE_STATIC_DIR="/opt/flowcode/public"
-    export FLOWCODE_FILE_ROOT="/workspace"
-    export FLOWCODE_LOCAL=1
-    export NODE_ENV=production
-    export SHELL=/bin/bash
-    # Map auth env vars to FlowCode's expected format
-    [ -n "${LLM_API_KEY:-}" ] && export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-${LLM_API_KEY}}"
-    [ -n "${LLM_BASE_URL:-}" ] && export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-${LLM_BASE_URL}}"
-
-    echo "╔══════════════════════════════════════════╗"
-    echo "║       CodeBox — FlowCode        ║"
     echo "╚══════════════════════════════════════════╝"
     echo ""
 
@@ -116,12 +84,6 @@ if [ "${CODEBOX_APP}" = "opencode" ] && [ -x "${OPENCODE_BIN_PATH:-}" ]; then
             || echo "  ⚠ Model cache refresh failed (non-fatal)"
     ) &
     echo "→ Refreshing model cache in background..."
-fi
-
-# ─── FlowCode mode guard (web-only) ──────────────────────────────
-if [ "${CODEBOX_APP}" = "flowcode" ] && [ "${CODEBOX_MODE}" != "web" ]; then
-    echo "  ⚠ FlowCode only supports web mode — overriding CODEBOX_MODE=${CODEBOX_MODE} → web"
-    CODEBOX_MODE="web"
 fi
 
 # ─── Record startup timestamp (ms) for status bar freshness ───────
