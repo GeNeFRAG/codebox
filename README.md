@@ -6,8 +6,8 @@ Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://g
 
 | Agent | `CODEBOX_APP` | What you get |
 |-------|---------------|--------------|
-| **OpenCode** (default) | `opencode` | [OpenCode AI](https://github.com/opencode-ai/opencode) — supports `web`, `tui`, and `tmux` modes |
-| **Claude Code** | `claude-code` | [Anthropic Claude Code](https://github.com/anthropics/claude-code) — supports `tui` and `tmux` modes only |
+| **OpenCode** (default) | `opencode` | [OpenCode AI](https://github.com/opencode-ai/opencode) — supports `web`and `tmux` modes |
+| **Claude Code** | `claude-code` | [Anthropic Claude Code](https://github.com/anthropics/claude-code) — supports `tmux` modes only |
 
 **UI mode** (set `CODEBOX_MODE` in `.env`), all served in the browser:
 
