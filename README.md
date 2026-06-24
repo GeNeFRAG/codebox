@@ -133,11 +133,12 @@ The tmux prefix is **Ctrl-Space** (instead of the usual Ctrl-b). Key bindings:
 | `Ctrl-Space c` | New window |
 | `Ctrl-Space Enter` | Enter copy/scroll mode (vi keys) |
 | `Ctrl-Space r` | Reload tmux config |
-| `Option-m` | Toggle agent monitor pane (25% height, bottom) |
-| `Option-Shift-m` | Agent monitor fullscreen window |
+| `Option-m` | Toggle shell pane (25% height, bottom) |
 | `Option-s` | Toggle status bar |
+| `Option-t` | Toggle dark/light theme |
+| `Option-w` | Toggle agent↔shell window |
 
-> **Note:** The `Ctrl-Space` prefix is intercepted by most browsers and ttyd, so the `m`/`M`/`s` monitor bindings use `Option-` root keys instead (no prefix needed). The pane/window bindings above work because `Ctrl-Space` + a letter typically passes through.
+> **Note:** The `Ctrl-Space` prefix is intercepted by most browsers, so the toggle bindings use `Option-` root keys (no prefix needed). The pane/window/split bindings above work because `Ctrl-Space` + a letter typically passes through.
 
 #### Copying text to clipboard
 
@@ -152,9 +153,9 @@ The modifier bypasses xterm.js application-mouse-mode, triggers a native selecti
 
 The same modifier trick applies to **tui** mode whenever the inner app is in application-mouse-mode.
 
-#### Agent monitor
+#### Shell pane
 
-The **status bar** shows session info on the left (`codebox │ branch │ model │ context-size`) and active subagent activity on the right (e.g. `2 ⚡explorer·fixer`) plus the local time. Press `Option-m` to open a live monitor pane at the bottom of the screen — it polls the SQLite DB and shows a color-coded feed of subagent lifecycle events: `▶ agent started` (with model name and timestamp) and `■ agent done` (with duration and token usage: in/out/cache). Press `Option-Shift-m` to open the same feed in a dedicated tmux window instead.
+Press `Option-m` to toggle a shell pane at the bottom (25% height) — useful for running commands alongside the agent. Press again to close it. `Option-w` toggles a separate shell window instead (full screen).
 
 #### Custom tmux config
 
@@ -316,7 +317,7 @@ services:
 | `CODEBOX_PORT` | Web UI / TUI port (default: `3000`) |
 | `CODEBOX_MODE` | OpenCode only — `web` (default) · `tui` · `tmux`. For Claude Code, only `tui`/`tmux` are valid (`web` is a fatal error at startup). |
 | `CODEBOX_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
-| `CODEBOX_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime: `Ctrl-Space t` |
+| `CODEBOX_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime: `Option-t` |
 | `OPENCODE_TUI_THEME` | OpenCode TUI color scheme (default: `opencode`). Built-in themes: `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix`. Change at runtime with `/theme`. OpenCode only |
 | `CODEBOX_TITLE` | Browser tab title for tui/tmux modes. Auto-detected from Compose service name if not set |
 | `OPENCODE_MODEL_FALLBACK` | Fallback model if LLM gateway is unreachable at startup (e.g. `github-copilot/gemini-2.5-pro`). OpenCode only |
@@ -375,7 +376,7 @@ Two independent theme layers control the visual appearance:
 
 | Layer | Variable | Values | Scope |
 |-------|----------|--------|-------|
-| **Terminal** | `CODEBOX_THEME` | `dark` (default), `light` | tmux status bar, borders, terminal background. Toggle at runtime: `Ctrl-Space t` |
+| **Terminal** | `CODEBOX_THEME` | `dark` (default), `light` | tmux status bar, borders, terminal background. Toggle at runtime: `Option-t` |
 | **TUI color scheme** | `OPENCODE_TUI_THEME` | `opencode` (default), `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix` | OpenCode's syntax and UI colors. Change at runtime: `/theme` command |
 
 Set both in `.env`:

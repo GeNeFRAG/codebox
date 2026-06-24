@@ -75,6 +75,7 @@ _serve_ttyd_loop() {
             ${_index_flag} \
             ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (${mode_label})}" \
+            -t macOptionIsMeta=true \
             -t macOptionClickForcesSelection=true \
             -t "theme={\"background\":\"${_theme_bg}\"}" \
             ${CODEBOX_TUI_ARGS:-} \

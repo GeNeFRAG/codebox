@@ -23,10 +23,8 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `codebox.sh` | Host CLI wrapper for docker compose operations |
 | `tmux/tmux.conf` | tmux keybindings and status bar config (tmux mode only) |
 | `tmux/tmux-theme-dark.conf` / `tmux/tmux-theme-light.conf` | Dark/light theme overrides for tmux status bar |
-| `tmux/tmux-theme-toggle.sh` | Runtime dark/light theme toggle (bound to `Ctrl-Space t`) |
-| `tmux/agent-monitor.sh` / `tmux/agent-status.sh` / `tmux/session-status.sh` | tmux status bar and monitor pane — poll the SQLite DB for subagent activity (OpenCode only) |
-| `tmux/session-status-claude.sh` | Simplified tmux status bar for Claude Code (no model/context data) |
-| `tmux/agent-monitor-toggle.sh` | Toggles the monitor pane on/off |
+| `tmux/tmux-theme-toggle.sh` | Runtime dark/light theme toggle (bound to `Option-t`) |
+| `tmux/shell-pane-toggle.sh` | Toggle shell pane on/off (bound to `Option-m`) |
 
 ## Conventions
 
