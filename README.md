@@ -155,7 +155,7 @@ The same modifier trick applies to **tui** mode whenever the inner app is in app
 
 #### Shell pane
 
-Press `Option-m` to toggle a shell pane at the bottom (25% height) — useful for running commands alongside the agent. Press again to close it. `Option-w` toggles a separate shell window instead (full screen).
+Press `Option-m` to toggle a zsh shell pane at the bottom (25% height) — useful for running commands alongside the agent. The shell runs zsh with Oh My Zsh for autocompletions and syntax highlighting. Press again to close it. `Option-w` toggles a separate shell window instead (full screen).
 
 #### Custom tmux config
 
@@ -679,6 +679,7 @@ Two Dockerfiles are provided:
 │   ├── tmux-theme-light.conf           # Light theme overrides
 │   ├── tmux-theme-toggle.sh            # Runtime dark/light theme toggle
 │   ├── agent-monitor.sh                # Agent activity monitor for tmux pane (OpenCode only)
+│   ├── shell-pane-toggle.sh            # Toggle zsh shell pane (uses @shell_pane tmux option)
 │   ├── agent-monitor-toggle.sh         # Toggle agent monitor pane on/off
 │   ├── agent-status.sh                 # tmux status bar subagent indicator (OpenCode only)
 │   ├── session-status.sh               # tmux status bar: model, branch, context size (OpenCode)

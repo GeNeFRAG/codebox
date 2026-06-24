@@ -24,7 +24,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `tmux/tmux.conf` | tmux keybindings and status bar config (tmux mode only) |
 | `tmux/tmux-theme-dark.conf` / `tmux/tmux-theme-light.conf` | Dark/light theme overrides for tmux status bar |
 | `tmux/tmux-theme-toggle.sh` | Runtime dark/light theme toggle (bound to `Option-t`) |
-| `tmux/shell-pane-toggle.sh` | Toggle shell pane on/off (bound to `Option-m`) |
+| `tmux/shell-pane-toggle.sh` | Toggle zsh shell pane on/off (bound to `Option-m`); uses `@shell_pane` user option for identification |
 
 ## Conventions
 
