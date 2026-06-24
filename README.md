@@ -13,9 +13,8 @@ Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://g
 
 | Mode | Set in `.env` | What you get |
 |------|--------------|--------------|
-| **web** (default) | `CODEBOX_MODE=web` | OpenCode's built-in browser UI (OpenCode only; not applicable for Claude Code) |
-| **tui** | `CODEBOX_MODE=tui` | The full terminal UI, rendered in the browser via [ttyd](https://github.com/tsl0922/ttyd) / xterm.js — identical to running the agent in a local terminal |
-| **tmux** | `CODEBOX_MODE=tmux` | Same terminal UI, wrapped in a persistent [tmux](https://github.com/tmux/tmux) session — survives browser disconnects, supports pane splitting, shell access alongside the agent, and a built-in agent activity monitor |
+| **web** (default) | `CODEBOX_MODE=web` | OpenCode's built-in browser UI (OpenCode only; not supported for Claude Code) |
+| **tmux** | `CODEBOX_MODE=tmux` | The full terminal UI in a persistent [tmux](https://github.com/tmux/tmux) session, rendered in the browser via [ttyd](https://github.com/tsl0922/ttyd) / xterm.js — survives browser disconnects, supports pane splitting, shell access alongside the agent, and a built-in agent activity monitor. (`tui` is accepted as an alias) |
 
 ## Prerequisites
 
@@ -82,44 +81,31 @@ The `--dockerfile` / `-d` flag overrides which Dockerfile is used for all build 
 
 Nothing to configure — `./codebox.sh start` launches OpenCode's browser UI on port 3000. This is the standard graphical interface with file trees, conversation panels, and tool output.
 
-> **Note:** `CODEBOX_MODE` is only a meaningful setting for OpenCode. For Claude Code only `tui` or `tmux` are valid (web mode is a fatal error).
+> **Note:** For Claude Code, only `tmux` is valid (`web` is a fatal error).
 
-### tui — terminal UI in the browser
+### tmux — persistent terminal UI
 
-Set `CODEBOX_MODE=tui` in `.env` to run the terminal interface in the browser via [ttyd](https://github.com/tsl0922/ttyd) — a full xterm.js terminal, exactly as it would look in a local terminal. Supported by OpenCode and Claude Code. Useful if you prefer the keyboard-driven TUI or want a lighter-weight experience.
+Set `CODEBOX_MODE=tmux` in `.env` to run the agent's terminal UI inside a persistent tmux session, served in the browser via [ttyd](https://github.com/tsl0922/ttyd) / xterm.js. This is the recommended mode for both OpenCode and Claude Code.
+
+Features: session persistence (survives browser disconnects), pane splitting, shell access from host (`docker exec -it <container> tmux attach -t codebox`), 50,000-line scrollback with vi keys and mouse scroll, built-in status bar with agent activity monitor.
+
+> **Backwards compatibility:** `CODEBOX_MODE=tui` is accepted as an alias for `tmux`.
 
 ```bash
 # .env
-CODEBOX_MODE=tui
+CODEBOX_MODE=tmux
 ```
 
-Start normally — the same URL now opens a terminal:
+Start normally — the URL opens a full terminal with tmux:
 
 ```bash
 ./codebox.sh start
 open http://localhost:3000
 ```
 
-Switch back at any time by removing the variable or setting `CODEBOX_MODE=web`.
+Switch back to OpenCode's web UI by setting `CODEBOX_MODE=web`.
 
 > **Per-service:** You can mix modes across repos — set `CODEBOX_MODE` in the `environment:` block of any service in `docker-compose.override.yml`.
-
-### tmux — persistent terminal UI
-
-`CODEBOX_MODE=tmux` wraps the TUI in a persistent tmux session. It provides the same terminal UI as `tui` mode, with these additions:
-
-| | tui | tmux |
-|---|-----|------|
-| **Session persistence** | Closing the browser tab kills the agent | Session survives — reopening the URL reattaches instantly |
-| **Pane splitting** | Single pane only | Split panes to run shells alongside the agent |
-| **Shell access from host** | Not possible | `docker exec -it <container> tmux attach -t codebox` |
-| **Scrollback** | Browser-managed | 50,000 lines, vi keys, mouse scroll |
-| **Agent monitor** | Not available | Built-in status bar + live monitor pane showing subagent activity |
-
-```bash
-# .env
-CODEBOX_MODE=tmux
-```
 
 The tmux prefix is **Ctrl-Space** (instead of the usual Ctrl-b). Key bindings:
 
@@ -182,7 +168,7 @@ Set `CODEBOX_APP=claude-code` in `.env` to run [Anthropic Claude Code](https://g
 ### Key differences from OpenCode
 
 |---|---------|-------------|---------|
-| **UI modes** | `web`, `tui`, `tmux` | `tui`, `tmux` only | `web` only |
+| **UI modes** | `web`, `tmux` | `tmux` only | `web` only |
 | **API key** | `LLM_API_KEY` | `LLM_API_KEY` → mapped to `ANTHROPIC_API_KEY` | `LLM_API_KEY` → mapped to `ANTHROPIC_AUTH_TOKEN` |
 | **Custom endpoint** | `LLM_BASE_URL` | `LLM_BASE_URL` → mapped to `ANTHROPIC_BASE_URL` | `LLM_BASE_URL` → mapped to `ANTHROPIC_BASE_URL` |
 | **Prefill proxy** | ✅ Enabled | ✗ Not used | ✗ Not used |
@@ -195,7 +181,7 @@ Follow the [Quick Start](#quick-start) steps, setting these values in `.env`:
 
 ```bash
 CODEBOX_APP=claude-code
-CODEBOX_MODE=tmux        # or tui — web mode is not supported
+CODEBOX_MODE=tmux        # web mode is not supported for Claude Code
 LLM_API_KEY=sk-ant-...
 ```
 
@@ -319,7 +305,7 @@ services:
 |----------|-------------|
 | `CODEBOX_APP` | `opencode` (default) — OpenCode AI agent · `claude-code` — Anthropic Claude Code agent |
 | `CODEBOX_PORT` | Web UI / TUI port (default: `3000`) |
-| `CODEBOX_MODE` | OpenCode only — `web` (default) · `tui` · `tmux`. For Claude Code, only `tui`/`tmux` are valid (`web` is a fatal error at startup). |
+| `CODEBOX_MODE` | `web` (default, OpenCode only) · `tmux` (both agents). `tui` is accepted as an alias for `tmux`. For Claude Code, `web` is a fatal error. |
 | `CODEBOX_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
 | `CODEBOX_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime: `Option-t` |
 | `OPENCODE_TUI_THEME` | OpenCode TUI color scheme (default: `opencode`). Built-in themes: `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix`. Change at runtime with `/theme`. OpenCode only |
@@ -542,12 +528,12 @@ Also rename:
 | MCP Docker servers not working | Check for `✓ Docker socket available` in logs. Pull image manually if needed. |
 | Port conflict | Change port in override: `ports: ["3001:3001"]` + `CODEBOX_PORT=3001` |
 | Need a shell | `./codebox.sh shell <service>` |
-| TUI: attach to tmux from host | `docker exec -it <container> tmux attach -t codebox` |
-| TUI: tmux key bindings not working | Use `Option-m` / `Option-s` root bindings (Mac); or try `Ctrl-Space` prefix (may be intercepted by browser/ttyd) |
-| TUI: can't copy text to OS clipboard | Hold **Option (⌥)** on macOS or **Shift** on Linux/Windows while dragging — see [Copying text to clipboard](#copying-text-to-clipboard) |
-| TUI: custom tmux config | Mount to `/root/.config/opencode/tmux.conf:ro` — applied at startup |
+| tmux: attach from host | `docker exec -it <container> tmux attach -t codebox` |
+| tmux: key bindings not working | Use `Option-m` / `Option-s` root bindings (Mac); or try `Ctrl-Space` prefix (may be intercepted by browser/ttyd) |
+| tmux: can't copy text to OS clipboard | Hold **Option (⌥)** on macOS or **Shift** on Linux/Windows while dragging — see [Copying text to clipboard](#copying-text-to-clipboard) |
+| tmux: custom config | Mount to `/root/.config/opencode/tmux.conf:ro` — applied at startup |
 | Claude Code: no API key error | Set `LLM_API_KEY` in `.env` — it is mapped to `ANTHROPIC_API_KEY` at startup. OAuth login does not work in headless Docker |
-| Claude Code: web mode fails | Set `CODEBOX_MODE=tui` or `CODEBOX_MODE=tmux` — web mode is not supported for Claude Code |
+| Claude Code: web mode fails | Set `CODEBOX_MODE=tmux` — web mode is not supported for Claude Code |
 | Claude Code: session data lost after restart | Mount a named volume to `/root/.claude` — see [Claude Code Mode](#claude-code-mode) |
 | Claude Code: stale session data after upgrade | Run `docker volume rm <claude-code-data-volume>` then restart |
 
