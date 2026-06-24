@@ -2,6 +2,19 @@
 # Resolves the app binary (APP_BIN), prints the startup banner, refreshes the
 # OpenCode model cache, initialises the UI theme, and derives the browser tab title.
 
+# ── Banner helper ────────────────────────────────────────────────
+_print_banner() {
+    local label="$1" ver_line="$2"
+    ver_line="${ver_line:0:22}"
+    local pad=$((22 - ${#ver_line}))
+    [ "$pad" -lt 0 ] && pad=0
+    echo "╔══════════════════════════════════════════╗"
+    echo "║     CodeBox — ${label}       ║"
+    echo "║     ${ver_line}$(printf '%*s' "$pad" '')║"
+    echo "╚══════════════════════════════════════════╝"
+    echo ""
+}
+
 # ── Resolve the app binary and export APP_BIN ─────────────────────
 if [ "${CODEBOX_APP}" = "claude-code" ]; then
     CLAUDE_BIN=$(which claude 2>/dev/null || echo "/usr/local/bin/claude")
@@ -34,14 +47,7 @@ if [ "${CODEBOX_APP}" = "claude-code" ]; then
     export CODEBOX_EXTRA_ARGS="${CODEBOX_EXTRA_ARGS:+${CODEBOX_EXTRA_ARGS} }${_claude_extra}"
 
     _app_ver=$("${APP_BIN}" --version 2>/dev/null || echo "unknown")
-    _app_ver="${_app_ver:0:22}"
-    _ver_pad=$((22 - ${#_app_ver}))
-    [ "${_ver_pad}" -lt 0 ] && _ver_pad=0
-    echo "╔══════════════════════════════════════════╗"
-    echo "║     CodeBox — Claude Code       ║"
-    echo "║     claude-code v${_app_ver}$(printf '%*s' "${_ver_pad}" '')║"
-    echo "╚══════════════════════════════════════════╝"
-    echo ""
+    _print_banner "Claude Code" "claude-code v${_app_ver}"
 
 else
     # OpenCode binary (default)
@@ -62,15 +68,8 @@ else
     fi
     export APP_BIN="${OPENCODE_BIN_PATH}"
 
-    OPENCODE_VER=$("${OPENCODE_BIN_PATH}" --version 2>/dev/null || echo "unknown")
-    OPENCODE_VER="${OPENCODE_VER:0:22}"  # clamp to fit banner width
-    _ver_pad=$((22 - ${#OPENCODE_VER}))
-    [ "${_ver_pad}" -lt 0 ] && _ver_pad=0
-    echo "╔══════════════════════════════════════════╗"
-    echo "║       CodeBox — OpenCode    ║"
-    echo "║       opencode-ai v${OPENCODE_VER}$(printf '%*s' "${_ver_pad}" '')║"
-    echo "╚══════════════════════════════════════════╝"
-    echo ""
+    _app_ver=$("${OPENCODE_BIN_PATH}" --version 2>/dev/null || echo "unknown")
+    _print_banner "OpenCode" "opencode-ai v${_app_ver}"
 fi
 
 # ─── Refresh model cache in the background (OpenCode only, best-effort) ─

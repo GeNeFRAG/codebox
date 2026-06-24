@@ -20,14 +20,9 @@ _TTYD_PROTOCOL="http"
 
 CODEBOX_MODE="${CODEBOX_MODE:-web}"
 
-if [ "${CODEBOX_MODE}" = "web" ]; then
-    export _TTYD_SSL_FLAGS _TTYD_PROTOCOL
-    return 0
-fi
-
 CODEBOX_TLS="${CODEBOX_TLS:-true}"
 
-if [ "${CODEBOX_TLS}" != "true" ]; then
+if [ "${CODEBOX_MODE}" = "web" ] || [ "${CODEBOX_TLS}" != "true" ]; then
     export _TTYD_SSL_FLAGS _TTYD_PROTOCOL
     return 0
 fi

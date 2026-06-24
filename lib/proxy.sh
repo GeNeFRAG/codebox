@@ -4,11 +4,15 @@
 #   - _restart_proxy: called from the web-mode restart loop to ensure the
 #     proxy is still alive between opencode restarts
 
-_start_proxy() {
-    echo "→ Starting prefill proxy on 127.0.0.1:18080 → ${LLM_BASE_URL}..."
+_spawn_proxy() {
     UPSTREAM_URL="${LLM_BASE_URL}" PROXY_PORT=18080 \
         node /opt/opencode/proxy/prefill-proxy.mjs &
     PROXY_PID=$!
+}
+
+_start_proxy() {
+    echo "→ Starting prefill proxy on 127.0.0.1:18080 → ${LLM_BASE_URL}..."
+    _spawn_proxy
 
     # Poll for readiness instead of a fixed sleep (up to 5s)
     _proxy_ready=false
@@ -44,9 +48,7 @@ _restart_proxy() {
     if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
         if [ -z "${PROXY_PID:-}" ] || ! kill -0 "${PROXY_PID}" 2>/dev/null; then
             echo "  ⟳ Prefill proxy not running — restarting..."
-            UPSTREAM_URL="${LLM_BASE_URL}" PROXY_PORT=18080 \
-                node /opt/opencode/proxy/prefill-proxy.mjs &
-            PROXY_PID=$!
+            _spawn_proxy
             sleep 1
             if kill -0 "${PROXY_PID}" 2>/dev/null; then
                 echo "  ✓ Prefill proxy restarted (PID ${PROXY_PID})"

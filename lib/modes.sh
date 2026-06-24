@@ -97,12 +97,9 @@ TMUX_SESSION="codebox"
 
 cd /workspace
 
-# Generate fullscreen ttyd index for tmux mode
 if [ "${CODEBOX_MODE}" = "tmux" ]; then
+    # Generate fullscreen ttyd index for tmux mode
     _generate_ttyd_index
-fi
-
-if [ "${CODEBOX_MODE}" = "tmux" ]; then
     # ── tmux mode: run app inside tmux, served by ttyd ───────────
     # Architecture: ttyd → wrapper script → tmux new/attach → app
     #

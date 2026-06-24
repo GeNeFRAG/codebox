@@ -89,34 +89,18 @@ _generate_claude_code_config() {
     #   - projects["/workspace"].hasTrustDialogAccepted → skips workspace trust dialog
     # Without these, the TUI blocks on interactive prompts.
     local config_json="${settings_dir}/.config.json"
+    local _key_json="null"
     if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-        local key_tail="${ANTHROPIC_API_KEY: -20}"
-        jq -n --arg kt "${key_tail}" '{
-            hasCompletedOnboarding: true,
-            customApiKeyResponses: {
-                approved: [$kt],
-                rejected: []
-            },
-            projects: {
-                "/workspace": {
-                    hasTrustDialogAccepted: true,
-                    allowedTools: []
-                }
-            }
-        }' > "${config_json}"
-        chmod 600 "${config_json}"
+        _key_json=$(jq -n --arg kt "${ANTHROPIC_API_KEY: -20}" '{approved: [$kt], rejected: []}')
+    fi
+    jq -n --argjson keys "${_key_json}" '{
+        hasCompletedOnboarding: true,
+        projects: {"/workspace": {hasTrustDialogAccepted: true, allowedTools: []}}
+    } + (if $keys != null then {customApiKeyResponses: $keys} else {} end)' > "${config_json}"
+    chmod 600 "${config_json}"
+    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
         echo "  ✓ Claude Code onboarding pre-seeded (API key approved, /workspace trusted)"
     else
-        jq -n '{
-            hasCompletedOnboarding: true,
-            projects: {
-                "/workspace": {
-                    hasTrustDialogAccepted: true,
-                    allowedTools: []
-                }
-            }
-        }' > "${config_json}"
-        chmod 600 "${config_json}"
         echo "  ✓ Claude Code onboarding pre-seeded (/workspace trusted, no API key)"
     fi
 }
