@@ -47,9 +47,11 @@ else
         "/tmp/tmux-wrapper.sh --loop"
     tmux source-file "${TMUX_THEME_DIR}/tmux-theme-${_init_theme}.conf" 2>/dev/null
     if [ "${CODEBOX_APP:-opencode}" = "claude-code" ]; then
-        [ -f /opt/opencode/tmux/claude-bindings.sh ] \
-            && source /opt/opencode/tmux/claude-bindings.sh \
-            || echo "  ! claude-bindings.sh missing — mouse bindings not applied"
+        tmux bind -T root WheelUpPane   if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-up"   "copy-mode -e"
+        tmux bind -T root WheelDownPane if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-down" ""
+        tmux bind C-r run-shell "kill -WINCH #{pane_pid} 2>/dev/null; sleep 0.05; kill -WINCH #{pane_pid} 2>/dev/null"
+        tmux set-hook -g client-resized  "run-shell -b 'kill -WINCH #{pane_pid} 2>/dev/null; sleep 0.05; kill -WINCH #{pane_pid} 2>/dev/null'"
+        tmux set-hook -g client-attached "run-shell -b 'sleep 0.2; kill -WINCH #{pane_pid} 2>/dev/null'"
     fi
     exec tmux -u attach -t "$TMUX_SESSION"
 fi
