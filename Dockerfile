@@ -49,7 +49,8 @@ RUN npm install -g \
     playwright \
     @cyanheads/git-mcp-server@2.8.4 \
     @hypnosis/docker-mcp-server@1.4.1 \
-    serve@14.2.3
+    serve@14.2.3 \
+    wrangler
 
 # ═══════════════════════════════════════════════════════════════════
 # atl-builder: RBI-internal Atlassian CLI (https://code.rbi.tech/raiffeisen/atl)
