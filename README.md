@@ -107,28 +107,19 @@ Switch back to OpenCode's web UI by setting `CODEBOX_MODE=web`.
 
 > **Per-service:** You can mix modes across repos — set `CODEBOX_MODE` in the `environment:` block of any service in `docker-compose.override.yml`.
 
-The tmux prefix is **Ctrl-Space** (instead of the usual Ctrl-b). Key bindings:
+Key bindings (all use `Option`/`Alt` — no prefix needed, work reliably in the browser):
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-Space \|` | Split pane vertically |
-| `Ctrl-Space -` | Split pane horizontally |
-| `Ctrl-Space h/j/k/l` | Navigate panes (vim-style) |
-| `Ctrl-Space H/J/K/L` | Resize panes (5 cells, repeatable) |
-| `Ctrl-Space Ctrl-Space` | Cycle to next pane |
-| `Ctrl-Space c` | New window |
-| `Ctrl-Space Enter` | Enter copy/scroll mode (vi keys) |
-| `Ctrl-Space ]` | Paste tmux buffer |
-| `Ctrl-Space r` | Reload tmux config |
-| `Option-h/j/k/l` | Navigate panes (no prefix needed) |
-| `Option-\` | Split pane vertically (no prefix) |
-| `Option--` | Split pane horizontally (no prefix) |
+| `Option-h/j/k/l` | Navigate panes (vim-style) |
+| `Option-\` | Split pane vertically |
+| `Option--` | Split pane horizontally |
 | `Option-m` | Toggle shell pane (25% height, bottom) |
 | `Option-s` | Toggle status bar |
 | `Option-t` | Toggle dark/light theme |
 | `Option-w` | Toggle agent↔shell window |
 
-> **Note:** The `Ctrl-Space` prefix is intercepted by most browsers, so the toggle bindings use `Option-` root keys (no prefix needed). The pane/window/split bindings above work because `Ctrl-Space` + a letter typically passes through.
+> **Note:** The tmux prefix is `Ctrl-Space` with additional bindings (resize, new window, copy mode, reload) available via `docker exec` attach — but `Ctrl-Space` is unreliable through the browser.
 
 #### Copying text to clipboard
 
