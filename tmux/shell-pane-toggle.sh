@@ -7,6 +7,6 @@ PANE_ID=$(tmux list-panes -F '#{pane_id} #{pane_title}' | grep ' shell$' | head 
 if [ -n "$PANE_ID" ]; then
     tmux kill-pane -t "$PANE_ID"
 else
-    NEW_PANE=$(tmux split-window -v -l '25%' -c /workspace -P -F '#{pane_id}')
+    NEW_PANE=$(tmux split-window -v -l '25%' -c /workspace -P -F '#{pane_id}' zsh)
     tmux select-pane -t "$NEW_PANE" -T shell
 fi

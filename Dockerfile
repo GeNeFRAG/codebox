@@ -115,9 +115,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ripgrep \
         tini \
         tmux \
+        zsh \
         python3 \
         sqlite3 \
     && rm -rf /var/lib/apt/lists/*
+
+# ─── Zsh + Oh My Zsh (shell pane) ────────────────────────────────
+RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /root/.oh-my-zsh \
+    && cp /root/.oh-my-zsh/templates/zshrc.zsh-template /root/.zshrc
 
 # ─── Docker CLI only (static binary, ~50 MB vs ~250 MB docker.io) ──
 ARG DOCKER_VERSION=27.3.1
