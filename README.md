@@ -132,7 +132,11 @@ The tmux prefix is **Ctrl-Space** (instead of the usual Ctrl-b). Key bindings:
 | `Ctrl-Space Ctrl-Space` | Cycle to next pane |
 | `Ctrl-Space c` | New window |
 | `Ctrl-Space Enter` | Enter copy/scroll mode (vi keys) |
+| `Ctrl-Space ]` | Paste tmux buffer |
 | `Ctrl-Space r` | Reload tmux config |
+| `Option-h/j/k/l` | Navigate panes (no prefix needed) |
+| `Option-\` | Split pane vertically (no prefix) |
+| `Option--` | Split pane horizontally (no prefix) |
 | `Option-m` | Toggle shell pane (25% height, bottom) |
 | `Option-s` | Toggle status bar |
 | `Option-t` | Toggle dark/light theme |
