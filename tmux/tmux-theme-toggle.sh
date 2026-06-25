@@ -43,13 +43,13 @@ tmux source-file "${THEME_DIR}/tmux-theme-${next}.conf"
 # ─── 3. Write theme flag ─────────────────────────────────────────
 echo "$next" > /tmp/.tmux-theme
 
-# ─── 4. Respawn the opencode TUI pane ────────────────────────────
-# respawn-pane -k kills the running process AND restarts the pane's
-# original command in one atomic operation.  The wrapper script reads
-# /tmp/.tmux-theme → sets COLORFGBG → exec opencode, so lipgloss
-# detects the new background on startup.
-# Target: window 1, pane 1 (the opencode TUI pane).
-tmux respawn-pane -k -t codebox:1.1 2>/dev/null
+# ─── 4. Respawn the agent TUI pane with session continuity ───────
+# respawn-pane -k kills the running process AND restarts the pane
+# command in one atomic operation.  The wrapper script reads
+# /tmp/.tmux-theme → sets COLORFGBG → exec agent --continue, so
+# lipgloss detects the new background and the session resumes.
+# Target: window 1, pane 1 (the agent TUI pane).
+tmux respawn-pane -k -c /workspace -t codebox:1.1 '/tmp/tmux-wrapper.sh --loop --respawn' 2>/dev/null
 
 # Brief visual confirmation
 tmux display-message "Theme: ${next}"

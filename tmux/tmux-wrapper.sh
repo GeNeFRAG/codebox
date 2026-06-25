@@ -28,11 +28,11 @@ if [ "${1:-}" = "--loop" ]; then
     else
         export COLORFGBG="15;0"
     fi
-    # On respawn (pane-died), pass --continue to resume the last session
-    # instead of starting a new one. Only applies to OpenCode (Claude Code
-    # manages its own session state and does not support this flag).
+    # On respawn (pane-died or theme toggle), pass --continue to resume
+    # the last session instead of starting a new one. Both OpenCode and
+    # Claude Code support this flag (claude -c / opencode --continue).
     _continue_flag=""
-    if [ "${CODEBOX_APP:-opencode}" = "opencode" ] && [ "${2:-}" = "--respawn" ]; then
+    if [ "${2:-}" = "--respawn" ]; then
         _continue_flag="--continue"
     fi
     # Re-resolve if stored path is stale (symlink broke, binary moved, etc.)
