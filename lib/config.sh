@@ -22,8 +22,7 @@ _generate_config() {
 
 # ─── Claude Code MCP server assembly ───────────────────────────────
 # Builds claude-code-mcp.json by including only enabled MCP servers.
-# Core servers (memory, context7, time, websearch) are always included.
-# Optional servers are gated by CODEBOX_MCP_<NAME> env vars (default: true).
+# All servers are gated by CODEBOX_MCP_<NAME> env vars (default: true).
 _generate_claude_code_mcp_config() {
     local mcp_config="$1"
     local mcp_parts_dir="/opt/opencode/templates/mcp-servers"
@@ -31,27 +30,9 @@ _generate_claude_code_mcp_config() {
     local enabled_list=""
     local disabled_list=""
 
-    # Core servers — always included
-    local core_servers="memory context7 time websearch"
-    # Optional servers — gated by CODEBOX_MCP_<UPPER_NAME> (default: true)
-    local optional_servers="github_rbi github_personal mcp-atlassian grafana docker sequential-thinking"
+    local all_servers="memory context7 time websearch github_rbi github_personal mcp-atlassian grafana docker sequential-thinking"
 
-    for server in ${core_servers}; do
-        local part="${mcp_parts_dir}/${server}.json"
-        if [ -f "${part}" ]; then
-            local rendered
-            rendered=$(envsubst "${_ENVSUBST_VARS_MCP}" < "${part}")
-            if merged=$(echo "${result}" | jq --argjson srv "${rendered}" '.mcpServers += $srv' 2>/dev/null); then
-                result="${merged}"
-                enabled_list="${enabled_list} ${server}"
-            else
-                echo "  ✗ Failed to merge MCP server: ${server} (invalid JSON?)"
-            fi
-        fi
-    done
-
-    for server in ${optional_servers}; do
-        # Convert server name to env var: mcp-atlassian → CODEBOX_MCP_MCP_ATLASSIAN
+    for server in ${all_servers}; do
         local var_name
         var_name="CODEBOX_MCP_$(echo "${server}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
         local enabled="${!var_name:-true}"
