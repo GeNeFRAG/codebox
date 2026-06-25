@@ -119,7 +119,7 @@ Key bindings (all use `Option`/`Alt` — no prefix needed, work reliably in the 
 | `Option-X` | Close all panes except current (reset) |
 | `Option-m` | Toggle shell pane (25% height, bottom) |
 | `Option-s` | Toggle status bar |
-| `Option-t` | Toggle dark/light theme |
+| `Option-t` | Toggle dark/light theme (session preserved) |
 | `Option-w` | Toggle agent↔shell window |
 
 > **Note:** The tmux prefix is `Ctrl-Space` with additional bindings (resize, new window, copy mode, reload) available via `docker exec` attach — but `Ctrl-Space` is unreliable through the browser.
@@ -221,7 +221,7 @@ The interactive onboarding wizard, API key approval prompt, and workspace trust 
 
 ### MCP servers in Claude Code mode
 
-The same MCP servers listed in [MCP Servers](#mcp-servers) are pre-configured for Claude Code via `/opt/opencode/claude-code-mcp.json.template`. `playwright` and `git` are disabled by default; the rest are enabled.
+The MCP config for Claude Code is assembled at runtime from individual server definitions in `templates/mcp-servers/`. Each server can be toggled via `CODEBOX_MCP_*` environment variables (default: enabled). See [Context Window Optimization](#context-window-optimization-claude-code) for details.
 
 ### tmux adaptations for Claude Code
 
@@ -327,6 +327,9 @@ services:
 | `CONFLUENCE_URL` / `_USERNAME` / `_TOKEN` | Confluence access |
 | `JIRA_URL` / `_USERNAME` / `_TOKEN` | Jira access |
 | `GRAFANA_URL` / `GRAFANA_API_KEY` | Grafana access |
+| `CODEBOX_MCP_*` | Toggle individual MCP servers for Claude Code (default: `true`). Set to `false` to exclude from generated config. Servers: `MEMORY`, `CONTEXT7`, `TIME`, `WEBSEARCH`, `GITHUB_RBI`, `GITHUB_PERSONAL`, `MCP_ATLASSIAN`, `GRAFANA`, `DOCKER`, `SEQUENTIAL_THINKING`. Claude Code only |
+| `CODEBOX_SKILLS_BMAD` | Enable/disable BMad skills (default: `true`). Saves ~300K tokens when disabled. Claude Code only |
+| `CODEBOX_GSD` | Enable/disable GSD system (default: `true`). Saves ~260K tokens when disabled. Claude Code only |
 
 </details>
 
@@ -389,7 +392,28 @@ OPENCODE_TUI_THEME=catppuccin
 | `git` | ❌ | Git operations via MCP |
 | `docker` | ❌ | Docker container/image management — runs as Node process, requires mounted socket |
 
-Enabled servers run as Node processes inside the container. Docker-based servers (github, atlassian, grafana) launch separate containers via the mounted Docker socket. To enable a disabled server, set `"enabled": true` in the template.
+Enabled servers run as Node processes inside the container. Docker-based servers (github, atlassian, grafana) launch separate containers via the mounted Docker socket. For OpenCode, edit the template to enable/disable a server. For Claude Code, toggle servers via `CODEBOX_MCP_*` env vars — see [Context Window Optimization](#context-window-optimization-claude-code).
+
+### Context Window Optimization (Claude Code)
+
+Each MCP server adds 50–150 tool definitions to Claude Code's system prompt. Disable unused servers and features to reclaim context window space:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `CODEBOX_MCP_MEMORY` | `true` | Memory server |
+| `CODEBOX_MCP_CONTEXT7` | `true` | Context7 knowledge search |
+| `CODEBOX_MCP_TIME` | `true` | Time/timezone utilities |
+| `CODEBOX_MCP_WEBSEARCH` | `true` | Web search |
+| `CODEBOX_MCP_GITHUB_RBI` | `true` | GitHub Enterprise |
+| `CODEBOX_MCP_GITHUB_PERSONAL` | `true` | GitHub.com |
+| `CODEBOX_MCP_MCP_ATLASSIAN` | `true` | Jira + Confluence |
+| `CODEBOX_MCP_GRAFANA` | `true` | Grafana dashboards |
+| `CODEBOX_MCP_DOCKER` | `true` | Docker management |
+| `CODEBOX_MCP_SEQUENTIAL_THINKING` | `true` | Multi-step reasoning |
+| `CODEBOX_SKILLS_BMAD` | `true` | BMad skills (~300K tokens) |
+| `CODEBOX_GSD` | `true` | GSD system (~260K tokens) |
+
+Set any variable to `false` in `.env` to disable it. Disabled files are backed up at startup and restored on graceful shutdown. If the container is hard-killed, restore with `git checkout -- .claude/`.
 
 <details>
 <summary><strong>Plugin: oh-my-opencode-slim</strong></summary>
@@ -556,6 +580,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 5. **CA certificate install** (`lib/ca-cert.sh`) — If `/certs/ca-bundle.pem` is mounted and non-empty, installs into system store + sets `NODE_EXTRA_CA_CERTS`.
 6. **Plugin install** (`lib/plugins.sh`) — Runs `npm install` in config dir if `package.json` exists (OpenCode only).
 7. **System checks** (`lib/system-checks.sh`) — Verifies Docker socket for MCP containers; marks `/workspace` as git safe.directory; validates `.git-credentials` and `.gitconfig-work` mounts; symlinks `/workspace` into `$HOME`.
+7b. **Context optimization** (`lib/context.sh`) — If `CODEBOX_SKILLS_BMAD=false` or `CODEBOX_GSD=false`, removes unused skill/agent files from `/workspace/.claude/` to reduce system prompt size. Files are backed up and restored on graceful shutdown (Claude Code only).
 8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` if `PREFILL_PROXY=true` (OpenCode only).
 9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner, refreshes the OpenCode model cache in the background and initialises the UI theme flag.
 10. **Mode launch** (`lib/modes.sh`) — Reads `CODEBOX_MODE` (default `web`):
@@ -573,7 +598,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 
 **Claude Code-specific steps (in `lib/config.sh`):**
 
-- **MCP config** — `envsubst` on `templates/claude-code.mcp.json.template` → `claude-code-mcp.json`; passed via `--mcp-config`
+- **MCP config** — Assembles `claude-code-mcp.json` from individual server definitions in `templates/mcp-servers/`, including only servers with `CODEBOX_MCP_*=true`; passed via `--mcp-config`
 - **Settings** — Writes `/root/.claude/settings.json` with pre-approved tool permissions (`Bash(*)`, `Read(*)`, `Write(*)`, `Edit(*)`, `mcp__*`). If `CLAUDE_CODE_PERMISSION_MODE` is set, also writes `permissions.defaultMode` to pin the startup mode
 - **Auth mapping** — Maps `LLM_API_KEY` → `ANTHROPIC_API_KEY` and `LLM_BASE_URL` → `ANTHROPIC_BASE_URL` at startup
 - **Model mapping** — Exports `CLAUDE_CODE_MODEL` → `CLAUDE_MODEL` (Claude Code's env var for default model selection)
@@ -649,11 +674,13 @@ Two Dockerfiles are provided:
 │   ├── plugins.sh                      # OpenCode plugin (npm) installation
 │   ├── system-checks.sh               # Docker socket, git safe.directory, workspace symlink
 │   ├── proxy.sh                        # Prefill proxy start/stop (OpenCode only)
+│   ├── context.sh                      # Context window optimization (Claude Code only)
 │   ├── runtime.sh                      # Binary resolution, banner, theme, title, mode guard
 │   └── modes.sh                        # Mode launch: web / tui / tmux
 ├── templates/
 │   ├── opencode.json.template          # OpenCode config template (MCP servers, providers)
-│   ├── claude-code.mcp.json.template   # Claude Code MCP server config template
+│   ├── claude-code.mcp.json.template   # Claude Code MCP config output (assembled from mcp-servers/)
+│   ├── mcp-servers/                    # Individual MCP server JSON parts (assembled at runtime)
 │   └── oh-my-opencode-slim.json.template # Plugin preset config (baked into image at build)
 ├── proxy/
 │   └── prefill-proxy.mjs               # LLM proxy (strips prefill, OpenCode only)

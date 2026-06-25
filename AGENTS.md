@@ -16,7 +16,9 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `lib/runtime.sh` | Binary resolution (`APP_BIN`), startup banner, model cache refresh, theme initialization, browser tab title derivation |
 | `lib/modes.sh` | Mode launch: `web` / `tui` / `tmux` restart loops |
 | `templates/opencode.json.template` | OpenCode config — MCP servers, permissions, provider endpoints |
-| `templates/claude-code.mcp.json.template` | Claude Code MCP server config template |
+| `templates/claude-code.mcp.json.template` | Claude Code MCP config output path (assembled at runtime from `templates/mcp-servers/`) |
+| `templates/mcp-servers/*.json` | Individual MCP server definitions assembled at runtime into Claude Code MCP config; gated by `CODEBOX_MCP_*` env vars |
+| `lib/context.sh` | Context window optimization — prunes BMad skills and GSD system from `/workspace/.claude/` at startup, restores on shutdown (Claude Code only) |
 | `templates/oh-my-opencode-slim.json.template` | Agent preset — which model/skills/MCPs each agent role uses + fallback chains |
 | `proxy/prefill-proxy.mjs` | Local HTTP proxy that strips assistant prefill messages before forwarding to the LLM (OpenCode only) |
 | `docker-compose.yml` | Base service definition (volumes, healthcheck, resource limits) |
@@ -48,6 +50,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 7. **TLS cert for ttyd** — `lib/tls.sh`: generates a self-signed cert for the ttyd web terminal (tui/tmux modes only).
 8. **OpenCode plugins** — `lib/plugins.sh`: installs `oh-my-opencode-slim` from the npm cache baked into the image (OpenCode only).
 9. **System checks** — `lib/system-checks.sh`: Docker socket check, `git safe.directory`, workspace symlink, git credential validation.
+9b. **Context optimization** — `lib/context.sh:_optimize_claude_code_context`: if `CODEBOX_SKILLS_BMAD=false` or `CODEBOX_GSD=false`, backs up and removes unused skill/agent files from `/workspace/.claude/`. Restored by `_restore_claude_context()` on graceful shutdown (Claude Code only).
 10. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `PREFILL_PROXY_ENABLED=true` only).
 11. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, refreshes model cache, sets theme and browser tab title.
 12. **Mode launch** — `lib/modes.sh`: enters the `web`/`tui`/`tmux` restart loop for the chosen `CODEBOX_MODE`. **Does not return.**
@@ -77,7 +80,7 @@ MCP servers come in two forms:
 Steps to wire a new server into all three agents:
 
 1. **OpenCode** — edit `templates/opencode.json.template`, add an entry under `mcpServers`.
-2. **Claude Code** — edit `templates/claude-code.mcp.json.template`, same structure.
+2. **Claude Code** — add a `<server-name>.json` file to `templates/mcp-servers/` containing the server's config object (e.g. `{"my_server": {"type": "stdio", ...}}`). Add the server name to the `all_servers` list in `_generate_claude_code_mcp_config()` in `lib/config.sh`. The server is automatically gated by `CODEBOX_MCP_<NAME>` (default: enabled).
 4. If the server needs env vars (API keys, URLs), add them to `.env.example` with a descriptive comment.
 5. If you added a new `$VAR` to a template, add it to the `envsubst` call in `lib/config.sh` for the relevant config function (`_generate_config` or `_generate_claude_code_config`).
 6. Apply: `./codebox.sh restart codebox` (templates are bind-mounted; no rebuild needed).
