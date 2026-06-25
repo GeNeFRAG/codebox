@@ -1,0 +1,7 @@
+{
+  "time": {
+    "type": "stdio",
+    "command": "mcp-time-server",
+    "args": []
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "docker": {
+    "type": "stdio",
+    "command": "docker-mcp-server",
+    "args": []
+  }
+}

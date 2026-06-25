@@ -50,6 +50,7 @@ fi
 # shellcheck source=lib/proxy.sh
 . "${LIB}/proxy.sh"
 _cleanup() {
+    _restore_claude_context 2>/dev/null
     [ -n "${PROXY_PID:-}" ] && kill "${PROXY_PID}" 2>/dev/null
     exit 0
 }
@@ -84,6 +85,13 @@ _generate_atl_config
 # ─── 9. System checks (Docker socket, git, workspace symlinks) ──────
 # shellcheck source=lib/system-checks.sh
 . "${LIB}/system-checks.sh"
+
+# ─── 9b. Context optimization (Claude Code only) ──────────────────
+# shellcheck source=lib/context.sh
+. "${LIB}/context.sh"
+if [ "${CODEBOX_APP}" = "claude-code" ]; then
+    _optimize_claude_code_context
+fi
 
 # ─── 10. Prefill proxy (OpenCode only) ─────────────────────────────
 if [ "${CODEBOX_APP}" = "opencode" ] && [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then

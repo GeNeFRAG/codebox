@@ -1,0 +1,32 @@
+{
+  "mcp-atlassian": {
+    "type": "stdio",
+    "command": "mcp-run",
+    "args": [
+      "mcp-atlassian",
+      "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
+      "-e", "REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem",
+      "-e", "CONFLUENCE_URL",
+      "-e", "CONFLUENCE_USERNAME",
+      "-e", "CONFLUENCE_PERSONAL_TOKEN",
+      "-e", "CONFLUENCE_SSL_VERIFY",
+      "-e", "JIRA_URL",
+      "-e", "JIRA_USERNAME",
+      "-e", "JIRA_PERSONAL_TOKEN",
+      "-e", "JIRA_SSL_VERIFY",
+      "-e", "TOOLSETS",
+      "ghcr.io/sooperset/mcp-atlassian:latest"
+    ],
+    "env": {
+      "CONFLUENCE_URL": "${CONFLUENCE_URL}",
+      "CONFLUENCE_USERNAME": "${CONFLUENCE_USERNAME}",
+      "CONFLUENCE_PERSONAL_TOKEN": "${CONFLUENCE_TOKEN}",
+      "CONFLUENCE_SSL_VERIFY": "false",
+      "JIRA_URL": "${JIRA_URL}",
+      "JIRA_USERNAME": "${JIRA_USERNAME}",
+      "JIRA_SSL_VERIFY": "false",
+      "JIRA_PERSONAL_TOKEN": "${JIRA_TOKEN}",
+      "TOOLSETS": "${ATLASSIAN_TOOLSETS}"
+    }
+  }
+}

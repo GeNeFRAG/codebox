@@ -1,0 +1,16 @@
+{
+  "github_personal": {
+    "type": "stdio",
+    "command": "mcp-run",
+    "args": [
+      "github_personal",
+      "-v", "${CA_CERT_PATH}:/certs/ca-bundle.pem:ro",
+      "-e", "SSL_CERT_FILE=/certs/ca-bundle.pem",
+      "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+      "ghcr.io/github/github-mcp-server"
+    ],
+    "env": {
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_TOKEN}"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "sequential-thinking": {
+    "type": "stdio",
+    "command": "mcp-server-sequential-thinking",
+    "args": []
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "websearch": {
+    "type": "stdio",
+    "command": "node",
+    "args": ["/opt/opencode/bin/websearch-mcp.js"]
+  }
+}
