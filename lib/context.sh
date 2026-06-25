@@ -53,13 +53,17 @@ _optimize_claude_code_context() {
         done
         [ "${bmad_count}" -gt 0 ] && changes="${changes} bmad-skills(${bmad_count})"
 
-        for cmd in brainstorming party-mode; do
-            if [ -f "${claude_dir}/commands/${cmd}.md" ]; then
+        local bmad_cmds=0
+        if [ -d "${claude_dir}/commands" ]; then
+            for cmd_file in "${claude_dir}"/commands/*.md; do
+                [ -f "${cmd_file}" ] || continue
                 mkdir -p "${_CLAUDE_BACKUP_DIR}/commands"
-                cp -a "${claude_dir}/commands/${cmd}.md" "${_CLAUDE_BACKUP_DIR}/commands/"
-                rm -f "${claude_dir}/commands/${cmd}.md"
-            fi
-        done
+                cp -a "${cmd_file}" "${_CLAUDE_BACKUP_DIR}/commands/"
+                rm -f "${cmd_file}"
+                bmad_cmds=$((bmad_cmds + 1))
+            done
+        fi
+        [ "${bmad_cmds}" -gt 0 ] && changes="${changes} bmad-commands(${bmad_cmds})"
     fi
 
     # ─── GSD system toggle ─────────────────────────────────────────────
