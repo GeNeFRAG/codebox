@@ -11,6 +11,15 @@
 TMUX_SESSION="codebox"
 
 if [ "${1:-}" = "--loop" ]; then
+    # Explicitly pull vars from tmux global environment — shell inheritance
+    # from split-window is unreliable; tmux show-environment always works
+    # inside a tmux session.
+    for _var in APP_BIN CODEBOX_APP CODEBOX_EXTRA_ARGS TMUX_THEME_DIR; do
+        if [ -z "${!_var:-}" ]; then
+            eval "$(tmux show-environment -g "$_var" 2>/dev/null)" 2>/dev/null || true
+        fi
+    done
+
     # Read theme at launch time (not just at container start) so that
     # respawns after theme toggle pick up the new COLORFGBG value.
     _theme=$(cat /tmp/.tmux-theme 2>/dev/null || echo "dark")
@@ -25,6 +34,20 @@ if [ "${1:-}" = "--loop" ]; then
     _continue_flag=""
     if [ "${CODEBOX_APP:-opencode}" = "opencode" ] && [ "${2:-}" = "--respawn" ]; then
         _continue_flag="--continue"
+    fi
+    # Re-resolve if stored path is stale (symlink broke, binary moved, etc.)
+    if [ -z "${APP_BIN:-}" ] || [ ! -x "${APP_BIN}" ]; then
+        if [ "${CODEBOX_APP:-opencode}" = "claude-code" ]; then
+            APP_BIN=$(which claude 2>/dev/null || true)
+        else
+            APP_BIN=$(which opencode 2>/dev/null || true)
+        fi
+    fi
+    if [ -z "${APP_BIN:-}" ] || [ ! -x "${APP_BIN}" ]; then
+        echo "ERROR: Cannot find agent binary (APP_BIN='${APP_BIN:-<unset>}')."
+        echo "The binary may have been removed or the symlink is broken."
+        echo "Press Option-x to close this pane."
+        exec sleep infinity
     fi
     exec "${APP_BIN}" ${_continue_flag} ${CODEBOX_EXTRA_ARGS}
 fi
@@ -45,6 +68,10 @@ else
     ROWS=$(tput lines 2>/dev/null || echo 50)
     tmux -u new-session -d -s "$TMUX_SESSION" -n "$(basename "$APP_BIN")" -x "$COLS" -y "$ROWS" -c /workspace \
         "/tmp/tmux-wrapper.sh --loop"
+    tmux set-environment -g APP_BIN "${APP_BIN}"
+    tmux set-environment -g CODEBOX_APP "${CODEBOX_APP:-opencode}"
+    tmux set-environment -g CODEBOX_EXTRA_ARGS "${CODEBOX_EXTRA_ARGS:-}"
+    tmux set-environment -g TMUX_THEME_DIR "${TMUX_THEME_DIR:-/opt/opencode/tmux}"
     tmux source-file "${TMUX_THEME_DIR}/tmux-theme-${_init_theme}.conf" 2>/dev/null
     if [ "${CODEBOX_APP:-opencode}" = "claude-code" ]; then
         tmux bind -T root WheelUpPane   if-shell -F "#{pane_in_mode}" "send-keys -X -N 3 scroll-up"   "copy-mode -e"

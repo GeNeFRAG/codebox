@@ -112,8 +112,11 @@ Key bindings (all use `Option`/`Alt` — no prefix needed, work reliably in the 
 | Key | Action |
 |-----|--------|
 | `Option-h/j/k/l` | Navigate panes (vim-style) |
-| `Option-\` | Split pane vertically |
-| `Option--` | Split pane horizontally |
+| `Option-v` | Split vertically — new agent session (all layouts) |
+| `Option-\` | Split vertically — alias (US/UK layouts) |
+| `Option--` | Split horizontally — new agent session |
+| `Option-x` | Close current pane |
+| `Option-X` | Close all panes except current (reset) |
 | `Option-m` | Toggle shell pane (25% height, bottom) |
 | `Option-s` | Toggle status bar |
 | `Option-t` | Toggle dark/light theme |
