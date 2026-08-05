@@ -22,13 +22,28 @@ fi
 # ─── Git configuration ────────────────────────────────────────────
 # Validate .gitconfig mount — Docker creates a directory if the host file
 # doesn't exist, which breaks git. Redirect to an empty file in that case.
+#
+# File-level bind mounts go stale when the host rewrites the file via
+# atomic rename (new inode). The container still sees the old inode with
+# Links=0, causing "unknown error occurred while reading the configuration
+# files". Copying to a local path makes git immune to inode staleness.
 GITCONFIG="/root/.gitconfig"
+GITCONFIG_LOCAL="/root/.gitconfig-local"
 if [ -d "${GITCONFIG}" ]; then
     echo "  ⚠ ${GITCONFIG} is a directory (host ~/.gitconfig missing?) — using defaults"
     echo "    Create ~/.gitconfig on the host, or ignore this if git defaults are fine"
     export GIT_CONFIG_GLOBAL="/dev/null"
 elif [ -f "${GITCONFIG}" ] && [ -s "${GITCONFIG}" ]; then
-    echo "  ✓ Host .gitconfig mounted"
+    # Copy to a writable local path to avoid stale-inode bind-mount issues.
+    # Rewrite include/credential paths so they reference local copies too.
+    sed -e 's|path = \.gitconfig-work|path = .gitconfig-work-local|g' \
+        -e 's|path = /root/\.gitconfig-work|path = /root/.gitconfig-work-local|g' \
+        -e 's|/root/\.git-credentials|/root/.git-credentials-local|g' \
+        "${GITCONFIG}" > "${GITCONFIG_LOCAL}"
+    export GIT_CONFIG_GLOBAL="${GITCONFIG_LOCAL}"
+    echo "  ✓ Host .gitconfig mounted (copied to local)"
+else
+    export GIT_CONFIG_GLOBAL="/dev/null"
 fi
 
 # Host .gitconfig is mounted read-only; use env vars to add safe.directory.
@@ -58,19 +73,23 @@ fi
 
 # Validate .git-credentials mount
 GIT_CRED="/root/.git-credentials"
+GIT_CRED_LOCAL="/root/.git-credentials-local"
 if [ -d "${GIT_CRED}" ]; then
     echo "  ⚠ ${GIT_CRED} is a directory (host file missing?) — HTTPS push credentials unavailable"
     echo "    Set GIT_CREDENTIALS_PATH in .env to your credentials file, or leave unset to disable"
 elif [ -f "${GIT_CRED}" ] && [ -s "${GIT_CRED}" ]; then
+    cp "${GIT_CRED}" "${GIT_CRED_LOCAL}"
     echo "  ✓ Git credentials available (HTTPS push supported)"
 fi
 
 # Validate .gitconfig-work mount (optional secondary git identity)
 GIT_WORK="/root/.gitconfig-work"
+GIT_WORK_LOCAL="/root/.gitconfig-work-local"
 if [ -d "${GIT_WORK}" ]; then
     echo "  ⚠ ${GIT_WORK} is a directory (host file missing?) — work git identity unavailable"
     echo "    Set GIT_CONFIG_WORK_PATH in .env to your work config file, or leave unset to disable"
 elif [ -f "${GIT_WORK}" ] && [ -s "${GIT_WORK}" ]; then
+    cp "${GIT_WORK}" "${GIT_WORK_LOCAL}"
     echo "  ✓ Git work config mounted (conditional identity active)"
 fi
 
