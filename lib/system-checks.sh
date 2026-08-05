@@ -39,6 +39,7 @@ elif [ -f "${GITCONFIG}" ] && [ -s "${GITCONFIG}" ]; then
     sed -e 's|path = \.gitconfig-work|path = .gitconfig-work-local|g' \
         -e 's|path = /root/\.gitconfig-work|path = /root/.gitconfig-work-local|g' \
         -e 's|/root/\.git-credentials|/root/.git-credentials-local|g' \
+        -e 's|/workspace/\.git-credentials|/root/.git-credentials-local|g' \
         "${GITCONFIG}" > "${GITCONFIG_LOCAL}"
     export GIT_CONFIG_GLOBAL="${GITCONFIG_LOCAL}"
     echo "  ✓ Host .gitconfig mounted (copied to local)"
