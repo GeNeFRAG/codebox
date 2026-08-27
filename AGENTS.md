@@ -7,7 +7,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | File | What it configures |
 |------|--------------------|
 | `entrypoint.sh` | Container startup orchestrator — sources all `lib/` scripts in order |
-| `lib/env.sh` | Loads `.env` file; warns about non-reloadable variables; deprecation shim for old `OPENCODE_*` shared vars |
+| `lib/env.sh` | Loads `.env` file; warns about non-reloadable variables; deprecation shim for old `OPENCODE_*` shared vars; aliases credential names for plugin-supplied MCP servers (`JIRA_TOKEN` → `JIRA_PERSONAL_TOKEN`, `CONFLUENCE_TOKEN` → `CONFLUENCE_PERSONAL_TOKEN`, `GRAFANA_API_KEY` → `GRAFANA_TOKEN`) |
 | `lib/config.sh` | Config generation for both agents (opencode, claude-code), auth.json writing, host-auth merging |
 | `lib/ca-cert.sh` | Corporate CA certificate installation into system store |
 | `lib/plugins.sh` | OpenCode npm plugin installation (oh-my-opencode-slim) |

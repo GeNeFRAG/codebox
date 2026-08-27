@@ -61,6 +61,28 @@ _migrate_var OPENCODE_VERSION                   CODEBOX_VERSION
 _migrate_var OPENCODE_ENABLE_EXPERIMENTAL_MODELS CODEBOX_ENABLE_EXPERIMENTAL_MODELS
 _migrate_var CACHEBUST_OPENCODE                 CACHEBUST_CODEBOX
 
+# ─── Credential aliases for third-party plugins ────────────────────
+# CodeBox names its Atlassian/Grafana secrets JIRA_TOKEN, CONFLUENCE_TOKEN and
+# GRAFANA_API_KEY. Its own MCP servers rename them inside each server's `env`
+# block (see templates/mcp-servers/), but plugin-supplied MCP servers — e.g. the
+# RBI SDLC plugins' remote rbi-atlassian-mcp — interpolate *_PERSONAL_TOKEN /
+# GRAFANA_TOKEN straight from the process environment. Export those names here
+# so each secret stays declared once in .env.
+#
+# Aliasing must happen in shell, not .env: _load_env_file() parses .env
+# literally, so `JIRA_PERSONAL_TOKEN=${JIRA_TOKEN}` would export the literal
+# string '${JIRA_TOKEN}'. An explicitly-set target always wins.
+_alias_var() {
+    local src="$1" dst="$2"
+    if [[ -n "${!src:-}" && -z "${!dst:-}" ]]; then
+        export "$dst=${!src}"
+        echo "  → Aliased $src → $dst (for plugin MCP servers)"
+    fi
+}
+_alias_var JIRA_TOKEN        JIRA_PERSONAL_TOKEN
+_alias_var CONFLUENCE_TOKEN  CONFLUENCE_PERSONAL_TOKEN
+_alias_var GRAFANA_API_KEY   GRAFANA_TOKEN
+
 # ─── Warn about non-reloadable changes ─────────────────────────────
 if [ "${CODEBOX_PORT:-}" != "${_ORIG_PORT}" ]; then
     if [ -n "${_ORIG_PORT}" ]; then
