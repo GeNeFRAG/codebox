@@ -10,6 +10,16 @@
 # lists instead of merging (requires Docker Compose v2.24+).
 # That means anything you want from the base service must be repeated
 # here — including CODEBOX_PLAYWRIGHT and its cache volume (see below).
+#
+# ⚠ Most important thing to repeat: the DEV-ITERATION BIND MOUNTS
+#   (./lib, ./templates, ./entrypoint.sh, ./proxy, ./tmux, ./bin/*).
+#   docker-compose.yml declares them, but `volumes: !override` throws
+#   that list away. Forget them and the container runs the lib/ and
+#   templates/ snapshot baked into the image by `COPY` (Dockerfile) —
+#   so editing any lib/*.sh does nothing on `codebox.sh restart` and
+#   needs a full `rebuild`. It fails silently: no error, just stale
+#   behaviour. Note `.env` keeps working either way, which is what
+#   makes this easy to miss. Every service below re-lists them.
 # ═══════════════════════════════════════════════════════════════════
 
 services:
@@ -63,6 +73,18 @@ services:
       - ${HOST_AUTH_JSON:-.docker/empty-file}:/opt/opencode/host-auth.json:ro
       # ─── mkcert CA root (bind mount survives docker compose down -v) ──
       - ./.docker/mkcert-ca:/certs/mkcert-ca
+      # ─── Dev iteration — DO NOT DROP (see header note) ───────
+      # These make `./codebox.sh restart` pick up host edits. Remove
+      # them and every lib/ or template change needs a full rebuild.
+      # Paths are relative to the codebox repo, not your project.
+      - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+      - ./bin/mcp-run:/usr/local/bin/mcp-run:ro
+      - ./bin/websearch-mcp.js:/opt/opencode/bin/websearch-mcp.js:ro
+      - ./lib:/opt/opencode/lib:ro
+      - ./templates:/opt/opencode/templates:ro
+      - ./proxy:/opt/opencode/proxy:ro
+      - ./tmux/tmux.conf:/root/.tmux.conf:ro
+      - ./tmux:/opt/opencode/tmux:ro
 
   # ─────────────────────────────────────────────────────────────
   # Example: another-project — http://localhost:3002
@@ -101,6 +123,15 @@ services:
   #     - ${HOST_AUTH_JSON:-.docker/empty-file}:/opt/opencode/host-auth.json:ro
   #     # ─── mkcert CA root (bind mount survives docker compose down -v) ──
   #     - ./.docker/mkcert-ca:/certs/mkcert-ca
+  #     # ─── Dev iteration — DO NOT DROP (see header note) ───────
+  #     - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+  #     - ./bin/mcp-run:/usr/local/bin/mcp-run:ro
+  #     - ./bin/websearch-mcp.js:/opt/opencode/bin/websearch-mcp.js:ro
+  #     - ./lib:/opt/opencode/lib:ro
+  #     - ./templates:/opt/opencode/templates:ro
+  #     - ./proxy:/opt/opencode/proxy:ro
+  #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
+  #     - ./tmux:/opt/opencode/tmux:ro
 
   # ─────────────────────────────────────────────────────────────
   # Example: multi-repo workspace — http://localhost:3003
@@ -150,6 +181,15 @@ services:
   #     - ${HOST_AUTH_JSON:-.docker/empty-file}:/opt/opencode/host-auth.json:ro
   #     # ─── mkcert CA root (bind mount survives docker compose down -v) ──
   #     - ./.docker/mkcert-ca:/certs/mkcert-ca
+  #     # ─── Dev iteration — DO NOT DROP (see header note) ───────
+  #     - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+  #     - ./bin/mcp-run:/usr/local/bin/mcp-run:ro
+  #     - ./bin/websearch-mcp.js:/opt/opencode/bin/websearch-mcp.js:ro
+  #     - ./lib:/opt/opencode/lib:ro
+  #     - ./templates:/opt/opencode/templates:ro
+  #     - ./proxy:/opt/opencode/proxy:ro
+  #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
+  #     - ./tmux:/opt/opencode/tmux:ro
 
   # ─────────────────────────────────────────────────────────────
   # Example: Claude Code on my-project — http://localhost:3004
@@ -193,6 +233,15 @@ services:
   #     - ${CA_CERT_PATH:-.docker/empty-file}:/certs/ca-bundle.pem:ro
   #     # ─── mkcert CA root (bind mount survives docker compose down -v) ──
   #     - ./.docker/mkcert-ca:/certs/mkcert-ca
+  #     # ─── Dev iteration — DO NOT DROP (see header note) ───────
+  #     - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+  #     - ./bin/mcp-run:/usr/local/bin/mcp-run:ro
+  #     - ./bin/websearch-mcp.js:/opt/opencode/bin/websearch-mcp.js:ro
+  #     - ./lib:/opt/opencode/lib:ro
+  #     - ./templates:/opt/opencode/templates:ro
+  #     - ./proxy:/opt/opencode/proxy:ro
+  #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
+  #     - ./tmux:/opt/opencode/tmux:ro
 
 volumes:
   codebox-data-my-project:

@@ -62,11 +62,20 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 
 ## Dev Workflow
 
-`lib/`, `templates/`, `proxy/`, `tmux/`, `entrypoint.sh`, and `bin/mcp-run` are bind-mounted into the running container (see `docker-compose.yml` lines 103–116). Edits on the host take effect on the **next container restart** — no image rebuild needed for most changes.
+`lib/`, `templates/`, `proxy/`, `tmux/`, `entrypoint.sh`, and `bin/*` are bind-mounted into the running container (see the dev-iteration block at the end of `volumes: &codebox-volumes` in `docker-compose.yml`). Edits on the host take effect on the **next container restart** — no image rebuild needed for most changes.
+
+> **⚠ This holds only for services that actually carry those mounts.** `docker-compose.override.yml` services use `volumes: !override`, which *replaces* the inherited list rather than merging it — so any service that does not re-list the dev mounts runs the `lib/`/`templates/` snapshot baked into the image by `COPY` (`Dockerfile`), and host edits need a full `rebuild`. This fails **silently**: `entrypoint.sh` still sources `/opt/opencode/lib/env.sh` on every restart, just an older copy. `.env` is unaffected because every override re-lists it — which is what makes the failure easy to miss.
+>
+> Diagnose in one command each:
+> ```bash
+> grep -c '^ *- \./lib:' docker-compose.override.yml   # expect 1 per service
+> ./codebox.sh shell <svc>                             # then, inside:
+> grep /opt/opencode/lib /proc/self/mountinfo          # no output = stale, image-baked
+> ```
 
 | Task | Command |
 |------|---------|
-| Edit a `lib/*.sh` script or template | `./codebox.sh restart codebox` |
+| Edit a `lib/*.sh` script or template | `./codebox.sh restart codebox` (only if mounts present — see warning above) |
 | Reload `.env` changes | `./codebox.sh restart codebox` |
 | Follow startup logs | `./codebox.sh logs codebox` |
 | Open a shell in the running container | `./codebox.sh shell codebox` |
