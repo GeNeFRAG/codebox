@@ -28,7 +28,7 @@ if [ "${CODEBOX_APP}" = "claude-code" ]; then
     fi
 
     # Build extra args for Claude Code (--mcp-config flag, --model if set)
-    _claude_extra="--mcp-config /opt/opencode/templates/claude-code-mcp.json"
+    _claude_extra="--mcp-config /root/.claude/claude-code-mcp.json"
     if [ -n "${CLAUDE_MODEL:-}" ]; then
         _claude_extra="${_claude_extra} --model ${CLAUDE_MODEL}"
     fi

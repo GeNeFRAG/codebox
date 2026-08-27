@@ -16,8 +16,8 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `lib/runtime.sh` | Binary resolution (`APP_BIN`), startup banner, model cache refresh, theme initialization, browser tab title derivation |
 | `lib/modes.sh` | Mode launch: `web` / `tui` / `tmux` restart loops |
 | `templates/opencode.json.template` | OpenCode config — MCP servers, permissions, provider endpoints |
-| `templates/claude-code.mcp.json.template` | Claude Code MCP config output path (assembled at runtime from `templates/mcp-servers/`) |
-| `templates/mcp-servers/*.json` | Individual MCP server definitions assembled at runtime into Claude Code MCP config; gated by `CODEBOX_MCP_*` env vars |
+| `templates/claude-code.mcp.json.template` | Nothing at runtime — reference manifest that `scripts/verify-mcp-sync.sh` diffs against `templates/mcp-servers/` and `opencode.json.template` |
+| `templates/mcp-servers/*.json` | Individual MCP server definitions, assembled at runtime into `/root/.claude/claude-code-mcp.json`; gated by `CODEBOX_MCP_*` env vars |
 | `lib/context.sh` | Context window optimization — prunes BMad skills and GSD system from `/workspace/.claude/` at startup, restores on shutdown (Claude Code only) |
 | `lib/playwright.sh` | On-demand Playwright browser download at startup, gated by `CODEBOX_PLAYWRIGHT` (not baked into the image) |
 | `templates/oh-my-opencode-slim.json.template` | Agent preset — which model/skills/MCPs each agent role uses + fallback chains |

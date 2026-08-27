@@ -732,8 +732,8 @@ Set it in the service, not in `.env`: `lib/env.sh` re-exports `.env` over the co
 │   └── modes.sh                        # Mode launch: web / tui / tmux
 ├── templates/
 │   ├── opencode.json.template          # OpenCode config template (MCP servers, providers)
-│   ├── claude-code.mcp.json.template   # Claude Code MCP config output (assembled from mcp-servers/)
-│   ├── mcp-servers/                    # Individual MCP server JSON parts (assembled at runtime)
+│   ├── claude-code.mcp.json.template   # Reference manifest for scripts/verify-mcp-sync.sh (not generated)
+│   ├── mcp-servers/                    # Claude Code MCP config source — parts assembled at runtime
 │   └── oh-my-opencode-slim.json.template # Plugin preset config (baked into image at build)
 ├── proxy/
 │   └── prefill-proxy.mjs               # LLM proxy (strips prefill, OpenCode only)

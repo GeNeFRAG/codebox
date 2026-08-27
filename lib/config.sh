@@ -67,15 +67,16 @@ _generate_claude_code_mcp_config() {
 
 # ─── Claude Code config generation ──────────────────────────────────
 _generate_claude_code_config() {
-    local mcp_config="/opt/opencode/templates/claude-code-mcp.json"
     local settings_dir="/root/.claude"
+    local mcp_config="${settings_dir}/claude-code-mcp.json"
     local settings_file="${settings_dir}/settings.json"
+
+    mkdir -p "${settings_dir}"
 
     # 1. Generate MCP config by assembling enabled servers
     _generate_claude_code_mcp_config "${mcp_config}"
 
     # 2. Generate settings.json
-    mkdir -p "${settings_dir}"
     # Validate permission mode for settings.json (narrower set than the CLI flag)
     _settings_default_mode=""
     case "${CLAUDE_CODE_PERMISSION_MODE:-}" in
