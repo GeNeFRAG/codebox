@@ -627,7 +627,7 @@ Three stages, so build tools never reach the shipped image:
 
 - **`builder`** — `node:22-bookworm-slim` plus `build-essential` for native npm modules. Installs `opencode-ai`, `@anthropic-ai/claude-code`, the provider SDKs, `oh-my-opencode-slim`, and the bundled MCP server packages.
 - **`atl-builder`** — `golang:1.26-alpine`. Compiles the RBI-internal `atl` CLI from the `atl` build context, or emits a stub when `ATL_SRC_PATH` is unset.
-- **`runtime`** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `sqlite3`, `tini` (PID 1), `tmux`, `zsh`, Docker CLI, Bun, `python3` (for the `codemap` skill), `mkcert`, and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks — `opencode` and `claude` are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
+- **`runtime`** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `sqlite3`, `tini` (PID 1), `tmux`, `zsh`, Docker CLI + Compose v2 plugin (so `docker compose` and `./codebox.sh` work inside the box), Bun, `python3` (for the `codemap` skill), `mkcert`, and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks — `opencode` and `claude` are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
 
 #### Build-time toggles
 

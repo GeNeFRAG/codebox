@@ -131,6 +131,21 @@ RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz" \
     | tar xz --strip-components=1 -C /usr/local/bin docker/docker
 
+# ─── Docker Compose v2 CLI plugin ──────────────────────────────────
+# The static tarball above ships the CLI only, no cli-plugins dir, so
+# `docker compose` was an unknown command and the shim below dead.
+# Pinned to the last v2 release deliberately: v5 dropped the internal
+# buildkit builder and delegates builds to Docker Bake, so it would also
+# need the buildx plugin (~60 MB) before codebox.sh's `build` / `up
+# --build` worked. v2 is self-contained, and 2.24+ is all the
+# `!override` tag in docker-compose.override.yml requires.
+ARG DOCKER_COMPOSE_VERSION=2.40.3
+RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
+    mkdir -p /usr/local/lib/docker/cli-plugins && \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${ARCH}" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
 # ─── docker-compose shim (delegates to compose v2; needed by legacy scripts) ──
 RUN printf '#!/bin/sh\nexec docker compose "$@"\n' > /usr/local/bin/docker-compose && \
     chmod +x /usr/local/bin/docker-compose
