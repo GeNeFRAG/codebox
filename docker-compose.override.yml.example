@@ -8,6 +8,8 @@
 #
 # Note: `!override` replaces the inherited ports/volumes/environment
 # lists instead of merging (requires Docker Compose v2.24+).
+# That means anything you want from the base service must be repeated
+# here — including CODEBOX_PLAYWRIGHT and its cache volume (see below).
 # ═══════════════════════════════════════════════════════════════════
 
 services:
@@ -30,11 +32,23 @@ services:
       - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
       - CODEBOX_ENABLE_EXPERIMENTAL_MODELS=1
       - CODEBOX_PORT=3001
+      # ─── Playwright browsers (decided per service) ───────────
+      # false (default) | true (~984 MB) | shell (~340 MB).
+      # Downloaded on first start into the volume below, never baked
+      # into the image — so `./codebox.sh restart my-project` is all
+      # it takes to turn on or off, no rebuild.
+      # ⚠ Set it here, not in .env: lib/env.sh re-exports .env over the
+      #   container environment, so a value in .env overrides this line
+      #   for every service at once.
+      - CODEBOX_PLAYWRIGHT=false
     volumes:
       !override
       - ${REPOS_PATH:-~/repos}/my-project:/workspace
       - codebox-data-my-project:/root/.local/share/opencode
       - codebox-memory-my-project:/root/.config/opencode/memory
+      # Keeps downloaded browsers across --force-recreate. Omit this
+      # line and they re-download on every recreate.
+      - playwright-my-project:/root/.cache/ms-playwright
       - /var/run/docker.sock:/var/run/docker.sock
       # ─── .env file (reloaded on container restart) ──────────
       - ./.env:/opt/opencode/.env:ro
@@ -185,6 +199,10 @@ volumes:
     name: codebox-data-my-project
   codebox-memory-my-project:
     name: codebox-memory-my-project
+  # Playwright browser cache — one per service, so each container decides
+  # independently whether to hold ~984 MB of browsers.
+  playwright-my-project:
+    name: playwright-my-project
   # codebox-data-another:
   #   name: codebox-data-another
   # codebox-memory-another:

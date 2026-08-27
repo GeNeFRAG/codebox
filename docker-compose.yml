@@ -86,10 +86,17 @@ services:
       - NODE_EXTRA_CA_CERTS=/certs/ca-bundle.pem
       - REQUESTS_CA_BUNDLE=/certs/ca-bundle.pem
       - CODEBOX_ENABLE_EXPERIMENTAL_MODELS=1
+      # ─── Playwright browsers (per service) ─────────────────────
+      # false (default) | true (~984 MB) | shell (~340 MB).
+      # Downloaded on first start into the volume below, so flipping
+      # this needs only a `restart`, never a rebuild.
+      - CODEBOX_PLAYWRIGHT=${CODEBOX_PLAYWRIGHT:-false}
     volumes:
       - .:/workspace
       - codebox-data-self:/root/.local/share/opencode
       - codebox-memory-self:/root/.config/opencode/memory
+      # Keeps downloaded browsers across --force-recreate
+      - playwright-self:/root/.cache/ms-playwright
       # Inherit shared mounts
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/.ssh:/root/.ssh:ro
@@ -128,6 +135,10 @@ volumes:
     name: codebox-data-self
   codebox-memory-self:
     name: codebox-memory-self
+  # Playwright browser cache — one volume per service, so each container
+  # decides independently whether to hold ~984 MB of browsers.
+  playwright-self:
+    name: playwright-self
   # Claude Code session/settings volume — only mounted when CODEBOX_APP=claude-code.
   # ⚠ IMPORTANT: You MUST add `- claude-code-data-self:/root/.claude` to the
   #   service's volumes in docker-compose.override.yml to persist Claude Code

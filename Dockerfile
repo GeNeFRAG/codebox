@@ -141,9 +141,6 @@ RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}" \
     -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
 
-# ─── atl (RBI-internal Atlassian CLI, optional) ────────────────────
-COPY --from=atl-builder /usr/local/bin/atl /usr/local/bin/atl
-
 # ─── mkcert (locally-trusted TLS certs for ttyd clipboard support) ──
 ARG MKCERT_VERSION=1.4.4
 RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") && \
@@ -159,10 +156,6 @@ COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=builder /root/.config/opencode/node_modules /root/.config/opencode/node_modules
 COPY --from=builder /root/.config/opencode/package.json /root/.config/opencode/package.json
 COPY --from=builder /root/.npm /root/.npm
-
-# ─── Plugin config (oh-my-opencode-slim) ───────────────────────────
-# Baked into the image; override at runtime via docker-compose volume mount.
-COPY templates/oh-my-opencode-slim.json.template /root/.config/opencode/oh-my-opencode-slim.json
 
 # Re-create global bin symlinks (npm symlinks are lost across stages)
 # IMPORTANT: Copy the Go binary to a stable path OUTSIDE node_modules.
@@ -191,10 +184,6 @@ RUN go_bin=$(find /usr/local/lib/node_modules/opencode-ai/bin -maxdepth 1 -type 
     ln -sf ../lib/node_modules/@hypnosis/docker-mcp-server/dist/index.js /usr/local/bin/docker-mcp-server && \
     ln -sf ../lib/node_modules/serve/build/main.js /usr/local/bin/serve
 
-# ─── Playwright browsers (pre-installed; project-local installs reuse via PLAYWRIGHT_BROWSERS_PATH) ──
-ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
-RUN playwright install --with-deps chromium
-
 # ─── Workspace and data directories ───────────────────────────────
 RUN mkdir -p /workspace \
     /root/.local/share/opencode \
@@ -211,9 +200,39 @@ RUN npx skills add https://github.com/brianlovin/claude-config --skill simplify 
     npx skills add https://github.com/vercel-labs/agent-browser --skill agent-browser -a '*' -y --global && \
     cp -r /root/.config/opencode/node_modules/oh-my-opencode-slim/src/skills/codemap /root/.config/opencode/skills/codemap
 
+# ─── Playwright system libraries (browsers install at runtime) ──────
+# `install-deps` apt-installs only the X11/GTK/font/audio libraries that
+# Chrome needs (~376 MB, no browser binaries) — it runs its own
+# apt-get update, so the empty lists left by the layer above are fine.
+# The browsers themselves (~984 MB) are NOT baked in. They download per
+# container on first start into a named volume, gated by the runtime
+# CODEBOX_PLAYWRIGHT var — see lib/playwright.sh. This keeps one image
+# shared by every service instead of one variant per Playwright setting.
+# These libraries also back the agent-browser skill, which drives Chrome
+# over CDP and needs the same shared objects.
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+RUN playwright install-deps chromium && rm -rf /var/lib/apt/lists/*
+
+# ═══════════════════════════════════════════════════════════════════
+# Churn zone: everything below re-runs on most builds.
+# Keep expensive layers ABOVE this line.
+#
+# The atl build context is a fresh `git clone` into a new temp dir on
+# every codebox.sh invocation (see _clone_atl), so its digest changes
+# each build and invalidates every layer beneath it. Keeping the COPY
+# here means that only trivial COPYs are affected — do not move it up.
+# ═══════════════════════════════════════════════════════════════════
+
+# ─── atl (RBI-internal Atlassian CLI, optional) ────────────────────
+COPY --from=atl-builder /usr/local/bin/atl /usr/local/bin/atl
+
 # ─── tmux configuration (TUI mode) ────────────────────────────────
 COPY tmux/tmux.conf /root/.tmux.conf
 COPY tmux/ /opt/opencode/tmux/
+
+# ─── Plugin config (oh-my-opencode-slim) ───────────────────────────
+# Baked into the image; override at runtime via docker-compose volume mount.
+COPY templates/oh-my-opencode-slim.json.template /root/.config/opencode/oh-my-opencode-slim.json
 
 # ─── Entrypoint and config ────────────────────────────────────────
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

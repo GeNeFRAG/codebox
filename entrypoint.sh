@@ -93,6 +93,11 @@ if [ "${CODEBOX_APP}" = "claude-code" ]; then
     _optimize_claude_code_context
 fi
 
+# ─── 9c. Playwright browsers (opt-in, per container) ──────────────
+# shellcheck source=lib/playwright.sh
+. "${LIB}/playwright.sh"
+_install_playwright
+
 # ─── 10. Prefill proxy (OpenCode only) ─────────────────────────────
 if [ "${CODEBOX_APP}" = "opencode" ] && [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
     _start_proxy

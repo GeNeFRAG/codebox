@@ -388,9 +388,9 @@ OPENCODE_TUI_THEME=catppuccin
 | `github_personal` | ❌ | GitHub.com — runs in Docker, requires `GITHUB_PERSONAL_TOKEN` |
 | `mcp-atlassian` | ❌ | Jira + Confluence — runs in Docker, requires Atlassian tokens |
 | `grafana` | ❌ | Grafana dashboards — runs in Docker, requires `GRAFANA_API_KEY` |
-| `playwright` | ❌ | Browser automation |
-| `git` | ❌ | Git operations via MCP |
 | `docker` | ❌ | Docker container/image management — runs as Node process, requires mounted socket |
+
+The `playwright` and `git` MCP servers were previously listed here but are not wired into any agent config — `@playwright/mcp` was removed outright (see *Internals: Playwright* below), and `git-mcp-server` is installed in the image but registered with neither agent. For browser automation, the `agent-browser` skill is baked in, but its CLI is not: run `npm i -g agent-browser && agent-browser install` first.
 
 Enabled servers run as Node processes inside the container. Docker-based servers (github, atlassian, grafana) launch separate containers via the mounted Docker socket. For OpenCode, edit the template to enable/disable a server. For Claude Code, toggle servers via `CODEBOX_MCP_*` env vars — see [Context Window Optimization](#context-window-optimization-claude-code).
 
@@ -623,14 +623,67 @@ A local HTTP proxy between OpenCode and the upstream LLM API:
 <details>
 <summary><strong>Internals: Docker Build</strong></summary>
 
-Multi-stage build for a minimal image size:
+Three stages, so build tools never reach the shipped image:
 
-Two Dockerfiles are provided:
+- **`builder`** — `node:22-bookworm-slim` plus `build-essential` for native npm modules. Installs `opencode-ai`, `@anthropic-ai/claude-code`, the provider SDKs, `oh-my-opencode-slim`, and the bundled MCP server packages.
+- **`atl-builder`** — `golang:1.26-alpine`. Compiles the RBI-internal `atl` CLI from the `atl` build context, or emits a stub when `ATL_SRC_PATH` is unset.
+- **`runtime`** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `sqlite3`, `tini` (PID 1), `tmux`, `zsh`, Docker CLI, Bun, `python3` (for the `codemap` skill), `mkcert`, and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks — `opencode` and `claude` are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
 
-- **`Dockerfile`** (public)
+#### Build-time toggles
 
+Unlike the `CODEBOX_*` runtime variables, these are Docker build args — they only take effect on `./codebox.sh rebuild`, not `restart`.
 
-**Runtime stage** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `tini` (PID 1), `tmux`, Docker CLI, Bun, `python3` (for the cartography skill), and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks — `opencode` and `claude` (Claude Code) are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `CODEBOX_VERSION` | `latest` | `opencode-ai` version pin |
+
+Playwright used to be a build arg here. It isn't any more — see below.
+
+#### Layer ordering
+
+The Dockerfile is ordered cheap-and-stable → expensive-and-stable → churny, with a marked **churn zone** near the bottom. Everything below that marker re-runs on most builds and must stay trivial.
+
+`COPY --from=atl-builder` belongs in the churn zone specifically because `codebox.sh:_clone_atl()` clones into a fresh temp dir on every invocation, so the `atl` build context digest changes on every build. Moving that `COPY` back above the `npx skills add` or `playwright install-deps` layers would invalidate them on every single rebuild.
+
+</details>
+
+<details>
+<summary><strong>Internals: Playwright</strong></summary>
+
+Playwright's browsers used to be baked into the image: `playwright install --with-deps chromium` was the single largest layer at **~1.36 GB** and added 2–4 minutes to a cold build. Nothing in the image needs them — the `@playwright/mcp` server was removed, and the `agent-browser` skill drives Chrome over CDP with no Playwright dependency. They existed only so a project in `/workspace` could reuse them instead of downloading its own.
+
+The install is now **split across build time and run time**:
+
+| | What | Where | Size |
+|---|---|---|---|
+| Build | `playwright install-deps chromium` — X11/GTK/font/audio libraries | Baked into the image, shared by every service | ~376 MB |
+| Run | `playwright install` — Chromium, headless shell, ffmpeg | Per-service named volume at `/root/.cache/ms-playwright` | ~984 MB |
+
+The image drops to roughly **4.6 GB** and there is exactly one variant of it, no matter how many services want browsers. The libraries stay baked because they're cheap, apt-managed (so they can't live in a volume), and also needed by `agent-browser`.
+
+Set `CODEBOX_PLAYWRIGHT` per container:
+
+| Value | Effect |
+|-------|--------|
+| `false` (default) | No browsers |
+| `true` | Chromium + headless shell + ffmpeg (~984 MB) |
+| `shell` | Headless shell only (~340 MB) — enough for scraping and CI-style runs |
+
+Because it's a runtime variable, flipping it needs only `./codebox.sh restart <service>`. Set it per service in `docker-compose.override.yml`:
+
+```yaml
+  my-project:
+    environment:
+      !override
+      - CODEBOX_PLAYWRIGHT=true
+    volumes:
+      !override
+      - playwright-my-project:/root/.cache/ms-playwright
+```
+
+Set it in the service, not in `.env`: `lib/env.sh` re-exports `.env` over the container environment at startup, so a value in `.env` overrides every service's `environment:` entry. Use `.env` only to change the default for all services at once.
+
+`lib/playwright.sh` runs on startup (boot phase 9c). The first start downloads in the background — startup isn't blocked and the healthcheck's 15s `start_period` isn't at risk; watch progress with `docker exec <container> cat /tmp/playwright-install.log`. Afterwards the volume is warm and the check no-ops in ~0.4s per start, which is also how browser version bumps get picked up. Drop the volume mount and everything still works, it just re-downloads on every recreate.
 
 </details>
 

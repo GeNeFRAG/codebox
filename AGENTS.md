@@ -19,6 +19,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `templates/claude-code.mcp.json.template` | Claude Code MCP config output path (assembled at runtime from `templates/mcp-servers/`) |
 | `templates/mcp-servers/*.json` | Individual MCP server definitions assembled at runtime into Claude Code MCP config; gated by `CODEBOX_MCP_*` env vars |
 | `lib/context.sh` | Context window optimization — prunes BMad skills and GSD system from `/workspace/.claude/` at startup, restores on shutdown (Claude Code only) |
+| `lib/playwright.sh` | On-demand Playwright browser download at startup, gated by `CODEBOX_PLAYWRIGHT` (not baked into the image) |
 | `templates/oh-my-opencode-slim.json.template` | Agent preset — which model/skills/MCPs each agent role uses + fallback chains |
 | `proxy/prefill-proxy.mjs` | Local HTTP proxy that strips assistant prefill messages before forwarding to the LLM (OpenCode only) |
 | `docker-compose.yml` | Base service definition (volumes, healthcheck, resource limits) |
@@ -33,6 +34,9 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 
 - Environment variables use the `CODEBOX_` prefix for shared settings (app, mode, port, theme, etc.). OpenCode-specific vars (`OPENCODE_MODEL`, `OPENCODE_MODEL_FALLBACK`, `OPENCODE_TUI_THEME`) keep the `OPENCODE_` prefix. A deprecation shim in `lib/env.sh` maps old `OPENCODE_*` shared vars to `CODEBOX_*` with a warning.
 - Environment variables are documented in `.env.example` and substituted into configs by `lib/config.sh` via `envsubst`.
+- Most `CODEBOX_*` vars are read at **runtime** by `entrypoint.sh`/`lib/`, so a `restart` picks them up. `CODEBOX_VERSION` is a Docker **build arg** declared as `ARG` in the `Dockerfile` and passed through `build.args` in `docker-compose.yml`; it requires `./codebox.sh rebuild`. Keep the two groups distinguishable in `.env.example`.
+- Prefer a **runtime** var over a build arg for anything optional. A build arg forks the image (one variant per value), which defeats per-service configuration since all services share one `build:` block. `CODEBOX_PLAYWRIGHT` is the reference case: the image bakes only the cheap, universal part (Chrome's system libraries via `playwright install-deps`) and `lib/playwright.sh` fetches the expensive per-service part (browser binaries) at startup into a per-service named volume.
+- The `Dockerfile` is ordered cheap-and-stable → expensive-and-stable → churny, with an explicit **churn zone** marker near the bottom. Layers below the marker re-run on most builds and must stay trivial. In particular `COPY --from=atl-builder` must stay there: `codebox.sh:_clone_atl()` re-clones into a fresh temp dir every invocation, so the `atl` build context digest changes on every build and invalidates everything beneath that `COPY`.
 - Shell scripts target `bash` and run inside the container at `/opt/opencode/`. The `entrypoint.sh` is the only script executed directly; everything else is sourced.
 - The `oh-my-opencode-slim` plugin is an npm package baked into the image. Its config template lives at `templates/oh-my-opencode-slim.json.template`; the active config lives at `/root/.config/opencode/oh-my-opencode-slim.json`.
 - The two agent binaries are available in the container at `/usr/local/bin/`: `opencode` and `claude` (Claude Code). `CODEBOX_APP` selects which one runs.
@@ -51,6 +55,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 8. **OpenCode plugins** — `lib/plugins.sh`: installs `oh-my-opencode-slim` from the npm cache baked into the image (OpenCode only).
 9. **System checks** — `lib/system-checks.sh`: Docker socket check, `git safe.directory`, workspace symlink, git credential validation.
 9b. **Context optimization** — `lib/context.sh:_optimize_claude_code_context`: if `CODEBOX_SKILLS_BMAD=false` or `CODEBOX_GSD=false`, backs up and removes unused skill/agent files from `/workspace/.claude/`. Restored by `_restore_claude_context()` on graceful shutdown (Claude Code only).
+9c. **Playwright browsers** — `lib/playwright.sh:_install_playwright`: if `CODEBOX_PLAYWRIGHT` is `true` or `shell`, runs `playwright install` into the per-service volume at `/root/.cache/ms-playwright`. No-ops in ~0.4s once populated; backgrounds the first-run download so the healthcheck's 15s `start_period` isn't at risk.
 10. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `PREFILL_PROXY_ENABLED=true` only).
 11. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, refreshes model cache, sets theme and browser tab title.
 12. **Mode launch** — `lib/modes.sh`: enters the `web`/`tui`/`tmux` restart loop for the chosen `CODEBOX_MODE`. **Does not return.**
