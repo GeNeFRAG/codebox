@@ -14,17 +14,25 @@ _start_proxy() {
     echo "→ Starting prefill proxy on 127.0.0.1:18080 → ${LLM_BASE_URL}..."
     _spawn_proxy
 
-    # Poll for readiness instead of a fixed sleep (up to 5s)
+    # Poll for readiness instead of a fixed sleep (up to 5s).
+    #
+    # A TCP connect is all that "is the listener up?" requires, and unlike an
+    # HTTP GET it never leaves the container. The previous check curled
+    # /models with no Authorization header, so the proxy dutifully forwarded
+    # it and every single start blocked ~4s waiting for the gateway to answer
+    # 401 — a request whose response was discarded either way.
+    #
+    # Upstream TCP+TLS still gets warmed below, with credentials, in ~50ms.
     _proxy_ready=false
-    for _i in $(seq 1 10); do
+    for _i in $(seq 1 25); do
         if ! kill -0 "${PROXY_PID}" 2>/dev/null; then
             break  # process died
         fi
-        if curl -s -o /dev/null "http://127.0.0.1:18080/models" 2>/dev/null; then
+        if (exec 3<>/dev/tcp/127.0.0.1/18080) 2>/dev/null; then
             _proxy_ready=true
             break
         fi
-        sleep 0.5
+        sleep 0.2
     done
 
     if [ "${_proxy_ready}" = "true" ]; then

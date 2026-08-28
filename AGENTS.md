@@ -13,7 +13,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `lib/plugins.sh` | OpenCode npm plugin installation (oh-my-opencode-slim) |
 | `lib/system-checks.sh` | Docker socket check, git safe.directory, workspace symlink, git credentials/work config validation |
 | `lib/proxy.sh` | Prefill proxy start/stop helpers (OpenCode only) |
-| `lib/runtime.sh` | Binary resolution (`APP_BIN`), startup banner, model cache refresh, theme initialization, browser tab title derivation |
+| `lib/runtime.sh` | Binary resolution (`APP_BIN`), startup banner, theme initialization, browser tab title derivation |
 | `lib/modes.sh` | Mode launch: `web` / `tui` / `tmux` restart loops |
 | `templates/opencode.json.template` | OpenCode config — MCP servers, permissions, provider endpoints |
 | `templates/claude-code.mcp.json.template` | Nothing at runtime — reference manifest that `scripts/verify-mcp-sync.sh` diffs against `templates/mcp-servers/` and `opencode.json.template` |
@@ -66,7 +66,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 9b. **Context optimization** — `lib/context.sh:_optimize_claude_code_context`: if `CODEBOX_SKILLS_BMAD=false` or `CODEBOX_GSD=false`, backs up and removes unused skill/agent files from `/workspace/.claude/`. Restored by `_restore_claude_context()` on graceful shutdown (Claude Code only).
 9c. **Playwright browsers** — `lib/playwright.sh:_install_playwright`: if `CODEBOX_PLAYWRIGHT` is `true` or `shell`, runs `playwright install` into the per-service volume at `/root/.cache/ms-playwright`. No-ops in ~0.4s once populated; backgrounds the first-run download so the healthcheck's 15s `start_period` isn't at risk.
 10. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `PREFILL_PROXY_ENABLED=true` only).
-11. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, refreshes model cache, sets theme and browser tab title.
+11. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, sets theme and browser tab title. Does **not** prime the model cache — OpenCode refreshes that itself on boot and hourly.
 12. **Mode launch** — `lib/modes.sh`: enters the `web`/`tui`/`tmux` restart loop for the chosen `CODEBOX_MODE`. **Does not return.**
 
 ## Dev Workflow

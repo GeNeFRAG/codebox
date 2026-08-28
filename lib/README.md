@@ -13,7 +13,7 @@ See **Boot Flow** in `AGENTS.md` for the order in which these are sourced and wh
 | `plugins.sh` | Installs `oh-my-opencode-slim` from the npm cache baked into the image (OpenCode only) |
 | `system-checks.sh` | Docker socket check, `git safe.directory`, workspace symlink, git credential/work config validation |
 | `proxy.sh` | Defines `_start_proxy` and `_cleanup`; `_start_proxy` launches `proxy/prefill-proxy.mjs` (OpenCode only) |
-| `runtime.sh` | Resolves `APP_BIN`, prints startup banner, refreshes model cache, initializes theme and browser tab title |
+| `runtime.sh` | Resolves `APP_BIN`, prints startup banner, initializes theme and browser tab title |
 | `modes.sh` | Enters the `web`/`tui`/`tmux` restart loop — the last thing sourced; **does not return** |
 
 These files are bind-mounted in `docker-compose.yml` (`./lib:/opt/opencode/lib:ro`), so edits on the host take effect after `./codebox.sh restart codebox` without a rebuild.

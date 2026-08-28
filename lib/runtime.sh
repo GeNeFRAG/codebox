@@ -72,18 +72,19 @@ else
     _print_banner "OpenCode" "opencode-ai v${_app_ver}"
 fi
 
-# ─── Refresh model cache in the background (OpenCode only, best-effort) ─
-# opencode caches provider model lists locally. After a container rebuild
-# the cache may be stale, causing ProviderModelNotFoundError for newly
-# available models. Refresh asynchronously so it doesn't delay startup.
-if [ "${CODEBOX_APP}" = "opencode" ] && [ -x "${OPENCODE_BIN_PATH:-}" ]; then
-    (
-        "${OPENCODE_BIN_PATH}" models --refresh >/dev/null 2>&1 \
-            && echo "  ✓ Model cache refreshed" \
-            || echo "  ⚠ Model cache refresh failed (non-fatal)"
-    ) &
-    echo "→ Refreshing model cache in background..."
-fi
+# ─── Model cache: refreshed by opencode itself, not from here ──────
+# There used to be a backgrounded `opencode models --refresh` here, meant to
+# avoid ProviderModelNotFoundError after a rebuild. It was pure overhead:
+# core/src/models-dev.ts forks the same refresh at startup and repeats it
+# every 60 minutes in-process, and any cache miss is populated on demand.
+#
+# Worse, it forked a second full opencode runtime just to exit again. On a
+# 1.5G service that was enough to get it OOM-killed — `runtime.sh: 2052
+# Killed` was in codebox-self's log — which is exactly the kind of noise
+# that looks like a startup fault but never was one.
+#
+# Nothing here needs to prime that cache. If a model genuinely goes missing,
+# run `opencode models --refresh` by hand.
 
 # ─── Record startup timestamp (ms) for status bar freshness ───────
 # Status scripts use this to ignore sessions from previous container

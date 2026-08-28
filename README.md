@@ -595,7 +595,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 7. **System checks** (`lib/system-checks.sh`) — Verifies Docker socket for MCP containers; marks `/workspace` as git safe.directory; validates `.git-credentials` and `.gitconfig-work` mounts; symlinks `/workspace` into `$HOME`.
 7b. **Context optimization** (`lib/context.sh`) — If `CODEBOX_SKILLS_BMAD=false` or `CODEBOX_GSD=false`, removes unused skill/agent files from `/workspace/.claude/` to reduce system prompt size. Files are backed up and restored on graceful shutdown (Claude Code only).
 8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` if `PREFILL_PROXY=true` (OpenCode only).
-9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner, refreshes the OpenCode model cache in the background and initialises the UI theme flag.
+9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner and initialises the UI theme flag.
 10. **Mode launch** (`lib/modes.sh`) — Reads `CODEBOX_MODE` (default `web`):
     - `web` — starts the agent in a restart loop on `0.0.0.0:${CODEBOX_PORT:-3000}` (OpenCode only; not supported for Claude Code)
     - `tui` — starts `ttyd` serving the agent TUI directly in a restart loop on the same port
@@ -607,7 +607,8 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 - **LLM gateway health check** — If `OPENCODE_MODEL_FALLBACK` is set, probes `LLM_BASE_URL/models`. On failure, switches `OPENCODE_MODEL` to the fallback and disables the prefill proxy.
 - **Auth setup** — Writes `auth.json` with `LLM_API_KEY` for anthropic/llm providers
 - **Host auth merge** — If the host's `auth.json` is mounted (Copilot tokens etc.), merges new providers into the container's `auth.json` without overwriting existing entries
-- **Model cache refresh** — Runs `opencode models --refresh` in the background to avoid stale model cache errors
+
+> The model cache is **not** primed at startup. OpenCode refreshes it itself (once on boot, then hourly, plus on demand), so an extra `opencode models --refresh` only forked a second runtime — enough to get OOM-killed on a 1.5G service. Run it by hand if a model ever goes missing.
 
 **Claude Code-specific steps (in `lib/config.sh`):**
 
