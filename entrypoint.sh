@@ -15,6 +15,9 @@ export LC_ALL="${LC_ALL:-C.UTF-8}"
 
 LIB="/opt/opencode/lib"
 
+# Prefix for phase-boundary log lines — makes it easy to see where time goes.
+_ts() { date '+%H:%M:%S'; }
+
 # ─── 1. Load .env and warn about non-reloadable changes ────────────
 # shellcheck source=lib/env.sh
 . "${LIB}/env.sh"
@@ -66,6 +69,7 @@ _cleanup() {
 trap _cleanup SIGTERM SIGINT
 
 # ─── 5. App-specific configuration ─────────────────────────────────
+echo "── $(_ts) config"
 # shellcheck source=lib/config.sh
 . "${LIB}/config.sh"
 
@@ -88,10 +92,12 @@ _generate_atl_config
 . "${LIB}/tls.sh"
 
 # ─── 8. OpenCode plugins ────────────────────────────────────────────
+echo "── $(_ts) plugins"
 # shellcheck source=lib/plugins.sh
 . "${LIB}/plugins.sh"
 
 # ─── 9. System checks (Docker socket, git, workspace symlinks) ──────
+echo "── $(_ts) system-checks"
 # shellcheck source=lib/system-checks.sh
 . "${LIB}/system-checks.sh"
 
@@ -103,6 +109,7 @@ if [ "${CODEBOX_APP}" = "claude-code" ]; then
 fi
 
 # ─── 9c. Playwright browsers (opt-in, per container) ──────────────
+echo "── $(_ts) playwright"
 # shellcheck source=lib/playwright.sh
 . "${LIB}/playwright.sh"
 _install_playwright
@@ -116,9 +123,11 @@ fi
 echo ""
 
 # ─── 11. Binary resolution, banner, theme, title ──────────────────
+echo "── $(_ts) runtime"
 # shellcheck source=lib/runtime.sh
 . "${LIB}/runtime.sh"
 
 # ─── 12. Mode launch (tmux / tui / web) — does not return ─────────
+echo "── $(_ts) launching ${CODEBOX_APP:-opencode} (${CODEBOX_MODE:-web})"
 # shellcheck source=lib/modes.sh
 . "${LIB}/modes.sh"

@@ -22,7 +22,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `lib/playwright.sh` | On-demand Playwright browser download at startup, gated by `CODEBOX_PLAYWRIGHT` (not baked into the image) |
 | `lib/docker-guard.sh` | Installs the `docker` guard shim on `PATH` (and in `/root/.{bashrc,zshrc}`), resolves `CODEBOX_COMPOSE_PROJECT`, writes the `/run/codebox-container` marker |
 | `lib/guard-bin/docker` | `PATH` shim in front of `/usr/local/bin/docker` — refuses commands that would stop/remove/recreate this container or its Compose siblings |
-| `templates/oh-my-opencode-slim.json.template` | Agent preset — which model/skills/MCPs each agent role uses + fallback chains |
+| `templates/oh-my-opencode-slim.json.template` | Agent preset — which model/skills/MCPs each agent role uses; each role's `model` accepts an array `[primary, ...fallbacks]`. Copied to `/root/.config/opencode/oh-my-opencode-slim.json` at container startup by `lib/config.sh` |
 | `proxy/prefill-proxy.mjs` | Local HTTP proxy that strips assistant prefill messages before forwarding to the LLM (OpenCode only) |
 | `docker-compose.yml` | Base service definition (volumes, healthcheck, resource limits) |
 | `codebox.sh` | Host CLI wrapper for docker compose operations; refuses everything except `logs`/`shell`/`status`/`urls`/`version` when run inside a container |
@@ -116,6 +116,5 @@ Agent roles live in `templates/oh-my-opencode-slim.json.template` under `presets
 
 1. Open `templates/oh-my-opencode-slim.json.template`.
 2. Copy an existing role (e.g. `orchestrator`) as a starting point.
-3. Add your role key under `presets.default` with `model`, `skills`, and `mcps` fields.
-4. Optionally add a fallback chain under `fallback.chains.<your-role>` (list of model IDs tried in order if the primary times out).
-5. Apply: `./codebox.sh restart codebox` (template is bind-mounted).
+3. Add your role key under `presets.default` with `model`, `skills`, and `mcps` fields. `model` accepts either a single ID or an array: the first entry is the primary, the rest are tried in order if it's unavailable. Retry behaviour is controlled by `fallback.enabled` and `fallback.maxRetries` at the top of the file.
+4. Apply: `./codebox.sh restart codebox` (`lib/config.sh` re-copies the template into place on every start).

@@ -181,6 +181,20 @@ _configure_opencode() {
     _generate_config
     echo "  ✓ Config written to ${CONFIG_FILE}"
 
+    # ─── Refresh oh-my-opencode-slim plugin config from template ───────
+    # Baked into the image at build time by the Dockerfile, but copied
+    # again here so restart picks up template edits without a rebuild.
+    # Skip if the user has bind-mounted their own file at this path.
+    _plugin_cfg="${CONFIG_DIR}/oh-my-opencode-slim.json"
+    _plugin_tpl="/opt/opencode/templates/oh-my-opencode-slim.json.template"
+    if grep -qE " ${_plugin_cfg}( |$)" /proc/self/mountinfo 2>/dev/null; then
+        echo "  → oh-my-opencode-slim.json is bind-mounted — leaving user config in place"
+    elif [ -f "${_plugin_tpl}" ]; then
+        cp "${_plugin_tpl}" "${_plugin_cfg}"
+        chmod 600 "${_plugin_cfg}"
+        echo "  ✓ oh-my-opencode-slim.json refreshed from template"
+    fi
+
     # ─── Generate auth.json if API key is set ──────────────────────────
     AUTH_FILE="${DATA_DIR}/auth.json"
     if [ -n "${LLM_API_KEY}" ]; then
