@@ -46,6 +46,15 @@ else
     export CA_CERT_PATH="/dev/null"
 fi
 
+# ─── 3b. Docker self-destruct guard ────────────────────────────────
+# The same socket that lets MCP servers run as sibling containers lets
+# anything in here stop or remove this container. Put the guard shim on
+# PATH before any user-reachable shell exists. Read-only docker calls in
+# the phases below (system-checks, runtime) pass through untouched.
+# shellcheck source=lib/docker-guard.sh
+. "${LIB}/docker-guard.sh"
+_install_docker_guard
+
 # ─── 4. Cleanup on SIGTERM (reap background proxy) ─────────────────
 # shellcheck source=lib/proxy.sh
 . "${LIB}/proxy.sh"

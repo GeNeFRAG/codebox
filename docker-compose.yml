@@ -6,6 +6,18 @@
 # (gitignored) — see docker-compose.override.yml.example
 # ═══════════════════════════════════════════════════════════════════
 
+# Pin the project name instead of inheriting the directory basename, so
+# it no longer matters whether the repo was cloned as codebox/,
+# codebox-main/, or /workspace inside a container — `docker compose ps`
+# and friends address the same project either way.
+# Safe to adopt: every volume below sets an explicit `name:` and every
+# service an explicit `container_name:`, so nothing is project-prefixed
+# and no data moves. If your clone directory was NOT named "codebox",
+# your existing containers are labelled with the old project name —
+# either `docker rm` them once, or set COMPOSE_PROJECT_NAME in .env,
+# which takes precedence over this.
+name: codebox
+
 x-codebox-common: &codebox-common
   build:
     context: .

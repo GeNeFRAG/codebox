@@ -1,0 +1,181 @@
+#!/bin/bash
+# ─── docker self-destruct guard ─────────────────────────────────────
+# PATH shim in front of the real Docker CLI. Installed by
+# lib/docker-guard.sh at container startup (boot phase 3b).
+#
+# The container mounts the host's /var/run/docker.sock so MCP servers can
+# run as sibling containers. That same socket lets anything in here stop,
+# remove, or recreate the container it is running in — taking the session
+# down mid-command — and the host's other CodeBox containers with it.
+# codebox.sh guards its own subcommands; this guards raw `docker`, for the
+# agent and for a human in the tmux shell pane alike.
+#
+# Refuses only what targets *us*: a container that is this container or
+# carries our Compose project label, a volume with that label, a Compose
+# mutation, or a host-wide prune. Everything else passes through — in
+# particular `docker run`, `docker ps`, `docker inspect`, `docker exec`,
+# and bin/mcp-run's `docker rm -f mcp-<name>` (sibling MCP containers are
+# started by `docker run`, so they carry no Compose project label).
+#
+# Bypass, in order of bluntness:
+#   CODEBOX_ALLOW_IN_CONTAINER=true docker ...   # skip the guard entirely
+#   /usr/local/bin/docker ...                    # call the real CLI direct
+#   CODEBOX_GUARD_DRYRUN=1 docker ...            # print verdict, run nothing
+
+set -uo pipefail
+
+REAL="/usr/local/bin/docker"
+
+# Blunt bypass, checked before anything else so it costs nothing.
+if [ "${CODEBOX_ALLOW_IN_CONTAINER:-false}" = "true" ]; then
+    exec "$REAL" "$@"
+fi
+
+# Who we are and what we own. entrypoint.sh exports CODEBOX_COMPOSE_PROJECT;
+# /run/codebox-container is the fallback for shells that did not inherit it
+# (docker exec into an already-running container).
+PROJECT="${CODEBOX_COMPOSE_PROJECT:-}"
+if [ -z "${PROJECT}" ] && [ -r /run/codebox-container ]; then
+    PROJECT="$(cat /run/codebox-container 2>/dev/null)"
+fi
+PROJECT="${PROJECT:-codebox}"
+SELF="$(cat /etc/hostname 2>/dev/null || true)"
+
+argv=("$@")
+
+# ─── Locate the subcommand ─────────────────────────────────────────
+# Global flags may precede it, and some take a separate value that would
+# otherwise be mistaken for the subcommand (`docker --context foo stop x`).
+_skip_flags() {
+    local j="$1"
+    while [ "${j}" -lt "${#argv[@]}" ]; do
+        case "${argv[$j]:-}" in
+            -c|-H|--context|--host|--config|--log-level|\
+            --tlscacert|--tlscert|--tlskey|-t|--time|--timeout|-s|--signal)
+                j=$((j + 2)) ;;
+            -*) j=$((j + 1)) ;;
+            *)  break ;;
+        esac
+    done
+    echo "${j}"
+}
+
+idx="$(_skip_flags 0)"
+first="${argv[$idx]:-}"
+group=""
+verb=""
+
+case "${first}" in
+    container|volume|image|system|builder|network|compose)
+        group="${first}"
+        idx="$(_skip_flags $((idx + 1)))"
+        verb="${argv[$idx]:-}"
+        ;;
+    *)
+        verb="${first}"
+        ;;
+esac
+
+# Bare tokens after the verb — the things being acted on.
+targets=()
+tidx="$(_skip_flags $((idx + 1)))"
+while [ "${tidx}" -lt "${#argv[@]}" ]; do
+    targets+=("${argv[$tidx]}")
+    tidx="$(_skip_flags $((tidx + 1)))"
+done
+
+# ─── Ownership checks ──────────────────────────────────────────────
+# A name that does not resolve cannot be protected, so an inspect miss
+# means "allow" — that is what keeps mcp-run's pre-spawn `docker rm -f`
+# working when the container isn't there yet.
+#
+# The project label alone is NOT a safe test. `docker compose build` bakes
+# com.docker.compose.{project,service,version} into the *image*, so every
+# sibling started with plain `docker run` from a CodeBox image inherits
+# them. com.docker.compose.container-number is applied by Compose at
+# container-create time and is never inherited from an image, so
+# "project matches AND container-number set" means Compose really manages
+# it. codebox.role=mcp (set by bin/mcp-run) is excluded outright: those are
+# disposable siblings that mcp-run must be able to reap.
+#
+# Fields are pipe-delimited on purpose — with default IFS, `read` collapses
+# runs of spaces, so one empty label would shift every field after it.
+_owns_container() {
+    [ "${#targets[@]}" -eq 0 ] && return 1
+    local out id proj num role
+    out="$("$REAL" inspect --type container --format \
+'{{.Id}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.container-number"}}|{{index .Config.Labels "codebox.role"}}' \
+             "${targets[@]}" 2>/dev/null)" || true
+    [ -z "${out}" ] && return 1
+    while IFS='|' read -r id proj num role; do
+        [ -z "${id}" ] && continue
+        # Never stand between mcp-run and its own containers.
+        [ "${role}" = "mcp" ] && continue
+        # This very container, whatever its labels say.
+        if [ -n "${SELF}" ]; then
+            case "${id}" in "${SELF}"*) return 0 ;; esac
+        fi
+        # A container Compose actually manages in our project.
+        if [ "${proj}" = "${PROJECT}" ] && [ -n "${num}" ] && [ "${num}" != "<no value>" ]; then
+            return 0
+        fi
+    done <<< "${out}"
+    return 1
+}
+
+_owns_volume() {
+    [ "${#targets[@]}" -eq 0 ] && return 1
+    local out proj
+    out="$("$REAL" volume inspect \
+             --format '{{index .Labels "com.docker.compose.project"}}' \
+             "${targets[@]}" 2>/dev/null)" || true
+    [ -z "${out}" ] && return 1
+    while read -r proj; do
+        [ -n "${proj}" ] && [ "${proj}" = "${PROJECT}" ] && return 0
+    done <<< "${out}"
+    return 1
+}
+
+# ─── Verdict ───────────────────────────────────────────────────────
+reason=""
+case "${group}:${verb}" in
+    :stop|:kill|:rm|:restart|:pause|:update|\
+    container:stop|container:kill|container:rm|container:restart|\
+    container:pause|container:update)
+        if _owns_container; then
+            reason="that container belongs to the '${PROJECT}' Compose project (or is this very container)"
+        fi
+        ;;
+    volume:rm)
+        if _owns_volume; then
+            reason="that volume belongs to the '${PROJECT}' Compose project and holds agent state"
+        fi
+        ;;
+    compose:up|compose:down|compose:stop|compose:start|compose:restart|\
+    compose:rm|compose:kill|compose:create|compose:build|compose:pull)
+        reason="Compose resolves this repo's bind mounts against the container filesystem (./ → /workspace, ~ → /root) and hands those paths to the host daemon"
+        ;;
+    system:prune|builder:prune|image:prune|volume:prune|network:prune)
+        reason="it prunes the host's build cache and images from inside a container, which cannot see what it breaks"
+        ;;
+esac
+
+if [ -n "${reason}" ]; then
+    if [ "${CODEBOX_GUARD_DRYRUN:-}" = "1" ]; then
+        echo "BLOCK  ${reason}"
+        exit 0
+    fi
+    printf 'Error: refusing `docker %s` inside a CodeBox container — %s.\n' \
+        "${group:+${group} }${verb}" "${reason}" >&2
+    printf '\n' >&2
+    printf 'Run it in a terminal on the host instead. If you really mean it in here:\n' >&2
+    printf '  CODEBOX_ALLOW_IN_CONTAINER=true docker %s\n' "$*" >&2
+    exit 1
+fi
+
+if [ "${CODEBOX_GUARD_DRYRUN:-}" = "1" ]; then
+    echo "ALLOW"
+    exit 0
+fi
+
+exec "$REAL" "$@"

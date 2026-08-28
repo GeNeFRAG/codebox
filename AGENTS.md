@@ -20,10 +20,12 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `templates/mcp-servers/*.json` | Individual MCP server definitions, assembled at runtime into `/root/.claude/claude-code-mcp.json`; gated by `CODEBOX_MCP_*` env vars |
 | `lib/context.sh` | Context window optimization — prunes BMad skills and GSD system from `/workspace/.claude/` at startup, restores on shutdown (Claude Code only) |
 | `lib/playwright.sh` | On-demand Playwright browser download at startup, gated by `CODEBOX_PLAYWRIGHT` (not baked into the image) |
+| `lib/docker-guard.sh` | Installs the `docker` guard shim on `PATH` (and in `/root/.{bashrc,zshrc}`), resolves `CODEBOX_COMPOSE_PROJECT`, writes the `/run/codebox-container` marker |
+| `lib/guard-bin/docker` | `PATH` shim in front of `/usr/local/bin/docker` — refuses commands that would stop/remove/recreate this container or its Compose siblings |
 | `templates/oh-my-opencode-slim.json.template` | Agent preset — which model/skills/MCPs each agent role uses + fallback chains |
 | `proxy/prefill-proxy.mjs` | Local HTTP proxy that strips assistant prefill messages before forwarding to the LLM (OpenCode only) |
 | `docker-compose.yml` | Base service definition (volumes, healthcheck, resource limits) |
-| `codebox.sh` | Host CLI wrapper for docker compose operations |
+| `codebox.sh` | Host CLI wrapper for docker compose operations; refuses everything except `logs`/`shell`/`status`/`urls`/`version` when run inside a container |
 | `tmux/tmux.conf` | tmux keybindings and status bar config (tmux mode only) |
 | `tmux/tmux-theme-dark.conf` / `tmux/tmux-theme-light.conf` | Dark/light theme overrides for tmux status bar |
 | `tmux/tmux-theme-toggle.sh` | Runtime dark/light theme toggle (bound to `Option-t`) |
@@ -40,6 +42,12 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 - Shell scripts target `bash` and run inside the container at `/opt/opencode/`. The `entrypoint.sh` is the only script executed directly; everything else is sourced.
 - The `oh-my-opencode-slim` plugin is an npm package baked into the image. Its config template lives at `templates/oh-my-opencode-slim.json.template`; the active config lives at `/root/.config/opencode/oh-my-opencode-slim.json`.
 - The two agent binaries are available in the container at `/usr/local/bin/`: `opencode` and `claude` (Claude Code). `CODEBOX_APP` selects which one runs.
+- **The container can reach the host daemon, so it can kill itself.** `/var/run/docker.sock` is mounted for MCP sibling containers, which also means a `stop`/`rm`/`down` issued in here takes down the container running the command. Two layers guard it, both **allowlists** — a blocklist already failed open once by omitting `stop` and `prune`:
+  - `codebox.sh` permits only `logs`/`shell`/`status`/`urls`/`version` when `/run/codebox-container`, `/.dockerenv`, or `/run/.containerenv` is present.
+  - `lib/guard-bin/docker` shims the CLI and refuses container-destroying verbs aimed at this container or a Compose-managed sibling, `docker compose` mutations, and host-wide prunes.
+
+  Both honour `CODEBOX_ALLOW_IN_CONTAINER=true`. Use `CODEBOX_GUARD_DRYRUN=1 docker …` to print the shim's verdict without running anything.
+- When testing whether a container is one of ours, match `com.docker.compose.container-number`, **not** `com.docker.compose.project` alone. `docker compose build` bakes the project/service/version labels into the *image*, so any sibling started with plain `docker run` from a CodeBox image inherits them — `container-number` is applied by Compose at create time and is never inherited. `bin/mcp-run` containers additionally carry `codebox.role=mcp` and are always exempt so mcp-run can reap them.
 
 ## Boot Flow
 
@@ -48,6 +56,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 1. **Load env** — `lib/env.sh`: reads `.env`, applies deprecation shims (`OPENCODE_*` → `CODEBOX_*`).
 2. **Agent selection** — inlined: `CODEBOX_APP` (default: `opencode`) sets `APP_TITLE_PREFIX` and drives all downstream branches.
 3. **CA cert path** — inlined: runs `docker inspect` to resolve `CA_CERT_PATH` to the real host path so MCP sibling containers can mount it.
+3b. **Docker guard** — `lib/docker-guard.sh:_install_docker_guard`: prepends `lib/guard-bin/` to `PATH` so `docker` resolves to the guard shim, exports `CODEBOX_COMPOSE_PROJECT`, and writes `/run/codebox-container`. Runs before any user-reachable shell exists; read-only docker calls in later phases pass through untouched.
 4. **Cleanup trap** — `lib/proxy.sh` sourced here for `_cleanup`; SIGTERM/SIGINT kill the background proxy process.
 5. **Config generation** — `lib/config.sh`: dispatches to `_configure_opencode` or `_generate_claude_code_config` based on `CODEBOX_APP`.
 6. **Corporate CA cert** — `lib/ca-cert.sh`: installs CA bundle into the system trust store (no-op if `CA_CERT_PATH` is unset).

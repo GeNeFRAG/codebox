@@ -23,8 +23,59 @@ fi
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
+
+# ─── Host-only commands ───────────────────────────────────────────
+# The container ships a Docker CLI + Compose plugin and mounts the host's
+# docker.sock, so every command in here *runs* — it just does the wrong
+# thing, in one of three ways:
+#
+#   1. Path rewrite — start / restart / rebuild / nuke. Compose resolves
+#      relative and ~ paths against the client's filesystem while the
+#      daemon reads the result as a host path, so in here `.` becomes
+#      /workspace and `~/.ssh` becomes /root/.ssh, neither of which is
+#      the real host path. Anything that creates a container recreates it
+#      with mounts pointing at paths that do not exist on the host,
+#      silently losing the workspace bind and the dev-iteration mounts.
+#
+#   2. Self-destruct — stop / down / restart. These address containers by
+#      project label, which resolves perfectly well in here — including
+#      the container running the command. `stop` with no service argument
+#      stops every CodeBox container, this one included, killing the
+#      session mid-command.
+#
+#   3. Host-wide destruction — prune. `docker builder prune` and
+#      `docker image prune` hit the host daemon and reclaim the host's
+#      build cache from a nested context that cannot see what it broke.
+#
+# This is an allowlist, not a blocklist. A blocklist fails open: the
+# previous one enumerated the path-rewrite commands only, so `stop` and
+# `prune` slipped through, and every command added to the `case` block
+# below would have slipped through too. Naming the safe commands instead
+# means new subcommands are refused in here until deliberately cleared.
+#
+# Raw `docker` commands bypass this file entirely — lib/guard-bin/docker
+# guards those, and lib/docker-guard.sh puts it on PATH at startup.
+#
+# Escape hatch for a native-Linux host that mounts the repo at the same
+# path inside and out, where the rewrite is a no-op:
+#   CODEBOX_ALLOW_IN_CONTAINER=true ./codebox.sh restart svc
+_CONTAINER_SAFE=" logs shell status urls version help "
+if { [ -f /run/codebox-container ] || [ -f /.dockerenv ] || [ -f /run/.containerenv ]; } \
+   && [ "${CODEBOX_ALLOW_IN_CONTAINER:-false}" != "true" ] \
+   && [[ "${_CONTAINER_SAFE}" != *" ${1:-help} "* ]]; then
+    echo -e "${RED}Error: '${1:-}' is not available inside a CodeBox container.${NC}" >&2
+    echo "" >&2
+    echo "It would either recreate containers with bind mounts resolved against" >&2
+    echo "the container filesystem (./ → /workspace, ~ → /root), stop the very" >&2
+    echo "container running this command, or prune the host's build cache." >&2
+    echo "" >&2
+    echo -e "Run it in a terminal on the host instead. From in here, these are safe:" >&2
+    echo -e "  ${CYAN}$0 status${NC} · ${CYAN}$0 logs <svc>${NC} · ${CYAN}$0 shell <svc>${NC} · ${CYAN}$0 urls${NC} · ${CYAN}$0 version${NC}" >&2
+    exit 1
+fi
 
 # Clone atl source to a temp dir and export ATL_SRC_PATH for the Docker build.
 # Falls back silently if the repo is unreachable — the image will contain a stub.
@@ -102,6 +153,12 @@ usage() {
     echo "  version [svc]     Show current opencode-ai version in container"
     echo ""
     echo "Services are defined in docker-compose.yml and docker-compose.override.yml"
+    echo ""
+    echo "Host-only: start, stop, restart, rebuild, nuke, down, prune. Run these in"
+    echo "a terminal on the host — inside a CodeBox container they would recreate"
+    echo "services with bind mounts resolved against the container filesystem, stop"
+    echo "the container running the command, or prune the host's build cache."
+    echo "Safe in-container: logs, shell, status, urls, version."
     echo ""
     echo "Examples:"
     echo "  $0 start                                    # Start all repos"

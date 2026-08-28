@@ -55,18 +55,31 @@ open http://localhost:3000
 ```
 
 ```bash
-./codebox.sh start   [service]   # Build & start (all or one)
-./codebox.sh stop    [service]   # Stop
-./codebox.sh restart [service]   # Restart
+./codebox.sh start   [service]   # Build & start (all or one)      ⌂ host-only
+./codebox.sh stop    [service]   # Stop                            ⌂ host-only
+./codebox.sh restart [service]   # Restart                         ⌂ host-only
+./codebox.sh rebuild [service]   # Force rebuild & start           ⌂ host-only
+./codebox.sh nuke    [service]   # Rebuild with latest opencode-ai ⌂ host-only
+./codebox.sh down                # Stop & remove all containers    ⌂ host-only
+./codebox.sh prune               # Reclaim build cache             ⌂ host-only
 ./codebox.sh logs    [service]   # Follow logs
 ./codebox.sh shell   [service]   # Bash into container
-./codebox.sh rebuild [service]   # Force rebuild & start
-./codebox.sh nuke    [service]   # Rebuild with latest opencode-ai
 ./codebox.sh version [service]   # Show opencode-ai version in container
 ./codebox.sh status              # Show all services
 ./codebox.sh urls                # Show running URLs/ports
-./codebox.sh down                # Stop & remove all containers
 ```
+
+⌂ **host-only** — these are refused when run *inside* a CodeBox container. The
+container mounts the host's Docker socket (MCP servers run as sibling
+containers), so they would otherwise reach the host daemon and either recreate
+services with bind mounts resolved against the container filesystem (`.` →
+`/workspace`, `~` → `/root`), stop the very container running the command, or
+prune the host's build cache. Raw `docker stop` / `docker compose down` are
+blocked in-container too, by a CLI shim (`lib/guard-bin/docker`).
+
+Override with `CODEBOX_ALLOW_IN_CONTAINER=true` — sensible only on a
+native-Linux host that mounts the repo at the same path inside and out, where
+the path rewrite is a no-op.
 
 The `--dockerfile` / `-d` flag overrides which Dockerfile is used for all build operations in that invocation (default: `Dockerfile`):
 
