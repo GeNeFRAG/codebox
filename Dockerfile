@@ -35,10 +35,18 @@ ARG CACHEBUST_CLAUDE_CODE=0
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Install provider SDKs, plugins, and oh-my-opencode-slim
+# Pins are EXACT (no "latest"/caret ranges) so npm never needs to revalidate
+# a tag against the registry — lib/plugins.sh compares an md5 fingerprint of
+# this file against a baked .deps-fingerprint and skips `npm install` at
+# runtime when they match, saving ~4-5s on every container start. Bump these
+# deliberately: run an unpinned install once, read the resolved versions back
+# out of package-lock.json, and pin those exact versions here.
 RUN mkdir -p /root/.config/opencode && \
-    echo '{"dependencies":{"@ai-sdk/openai-compatible":"latest","@ai-sdk/groq":"^3.0.24","@opencode-ai/plugin":"latest","@openrouter/ai-sdk-provider":"^2.2.3","oh-my-opencode-slim":"latest"}}' \
+    echo '{"dependencies":{"@ai-sdk/openai-compatible":"3.0.39","@ai-sdk/groq":"3.0.63","@opencode-ai/plugin":"1.18.23","@openrouter/ai-sdk-provider":"2.10.0","oh-my-opencode-slim":"2.2.17"}}' \
     > /root/.config/opencode/package.json && \
-    cd /root/.config/opencode && npm install
+    cd /root/.config/opencode && npm install && \
+    md5sum /root/.config/opencode/package.json | cut -d' ' -f1 \
+        > /root/.config/opencode/.deps-fingerprint
 
 # Install MCP server packages globally (avoids npx registry checks at runtime)
 RUN npm install -g \
@@ -170,6 +178,7 @@ ENV PATH="/root/.bun/bin:$PATH:/host/homebrew-bin:/host/homebrew-sbin:/host/usr-
 COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=builder /root/.config/opencode/node_modules /root/.config/opencode/node_modules
 COPY --from=builder /root/.config/opencode/package.json /root/.config/opencode/package.json
+COPY --from=builder /root/.config/opencode/.deps-fingerprint /root/.config/opencode/.deps-fingerprint
 COPY --from=builder /root/.npm /root/.npm
 
 # Re-create global bin symlinks (npm symlinks are lost across stages)
