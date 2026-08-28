@@ -66,12 +66,21 @@ x-codebox-common: &codebox-common
     timeout: 10s
     start_period: 15s
     retries: 3
+  # Sized against observed peaks, not aspiration. The VM that hosts these
+  # containers has ~6 GB total, so 5 services x 4G of limits was fiction:
+  # no container ever reached its own cap (cgroup memory.events showed
+  # oom=0), the VM ran out of RAM first and the *global* OOM killer picked
+  # victims — killing whichever siblings looked expensive rather than the
+  # service that actually overran. A limit that binds before the machine
+  # does keeps that blast radius inside one container.
+  # Light services peak around 1.1-1.6 GiB. The heavy one (codebox-self,
+  # peak ~3.6 GiB) raises this in its own service block.
   deploy:
     resources:
       limits:
-        memory: 4G
+        memory: 1.5G
       reservations:
-        memory: 1G
+        memory: 512M
 
 services:
   # ─────────────────────────────────────────────────────────────
