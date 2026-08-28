@@ -58,7 +58,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 3. **CA cert path** — inlined: runs `docker inspect` to resolve `CA_CERT_PATH` to the real host path so MCP sibling containers can mount it.
 3b. **Docker guard** — `lib/docker-guard.sh:_install_docker_guard`: prepends `lib/guard-bin/` to `PATH` so `docker` resolves to the guard shim, exports `CODEBOX_COMPOSE_PROJECT`, and writes `/run/codebox-container`. Runs before any user-reachable shell exists; read-only docker calls in later phases pass through untouched.
 4. **Cleanup trap** — `lib/proxy.sh` sourced here for `_cleanup`; SIGTERM/SIGINT kill the background proxy process.
-5. **Config generation** — `lib/config.sh`: dispatches to `_configure_opencode` or `_generate_claude_code_config` based on `CODEBOX_APP`.
+5. **Config generation** — `lib/config.sh`: dispatches to `_configure_opencode` or `_generate_claude_code_config` based on `CODEBOX_APP`. Both paths gate MCP servers on `CODEBOX_MCP_<NAME>` from one shared server list (`_MCP_ALL_SERVERS`).
 6. **Corporate CA cert** — `lib/ca-cert.sh`: installs CA bundle into the system trust store (no-op if `CA_CERT_PATH` is unset).
 7. **TLS cert for ttyd** — `lib/tls.sh`: generates a self-signed cert for the ttyd web terminal (tui/tmux modes only).
 8. **OpenCode plugins** — `lib/plugins.sh`: skips `npm install` when the baked `.deps-fingerprint` still matches `package.json`; re-runs only if the fingerprint is stale or `node_modules` was wiped (OpenCode only).

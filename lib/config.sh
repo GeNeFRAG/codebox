@@ -7,8 +7,15 @@ DATA_DIR="/root/.local/share/opencode"
 TEMPLATE="/opt/opencode/templates/opencode.json.template"
 CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 
-_ENVSUBST_VARS_MCP='${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS} ${CLOUDFLARE_API_TOKEN}'
+_ENVSUBST_VARS_MCP='${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}'
 _ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_TUI_THEME}'
+
+# ─── Shared MCP server list (single source of truth) ───────────────
+# Consumed by both _generate_config() (opencode .mcp[].enabled gating)
+# and _generate_claude_code_mcp_config() (fragment include/exclude).
+# Keep in sync with templates/mcp-servers/*.json and the .mcp keys of
+# templates/opencode.json.template — see scripts/verify-mcp-sync.sh.
+_MCP_ALL_SERVERS="memory context7 time websearch github_rbi github_personal mcp-atlassian grafana docker sequential-thinking"
 
 # ─── Reusable config generation (called on startup + proxy fallback) ─
 _generate_config() {
@@ -17,6 +24,42 @@ _generate_config() {
     if [ ! -s "${CONFIG_FILE}" ]; then
         echo "  ✗ FATAL: Config generation failed (${CONFIG_FILE} is empty)"
         exit 1
+    fi
+
+    # ─── Gate .mcp[<server>].enabled via CODEBOX_MCP_<NAME> ────────────
+    # Layering: CODEBOX_MCP_<NAME> set → authoritative (true/1 → enabled,
+    # anything else → disabled). Unset → leave the template's own value
+    # untouched (template = default, env = override). Mirrors the gating
+    # in _generate_claude_code_mcp_config() so both agent paths agree.
+    local jq_filter="."
+    local enabled_list=""
+    local disabled_list=""
+    for server in ${_MCP_ALL_SERVERS}; do
+        local var_name
+        var_name="CODEBOX_MCP_$(echo "${server}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
+        if [ -n "${!var_name+x}" ]; then
+            local val="${!var_name}"
+            if [ "${val}" = "true" ] || [ "${val}" = "1" ]; then
+                jq_filter="${jq_filter} | .mcp[\"${server}\"].enabled = true"
+                enabled_list="${enabled_list} ${server}"
+            else
+                jq_filter="${jq_filter} | .mcp[\"${server}\"].enabled = false"
+                disabled_list="${disabled_list} ${server}"
+            fi
+        fi
+    done
+
+    if [ -n "${enabled_list}${disabled_list}" ]; then
+        local tmp_file="${CONFIG_FILE}.tmp"
+        if jq "${jq_filter}" "${CONFIG_FILE}" > "${tmp_file}" 2>/dev/null && [ -s "${tmp_file}" ]; then
+            mv "${tmp_file}" "${CONFIG_FILE}"
+            chmod 600 "${CONFIG_FILE}"
+            [ -n "${enabled_list}" ] && echo "  ✓ MCP servers enabled:[${enabled_list# }]"
+            [ -n "${disabled_list}" ] && echo "  ✓ MCP servers disabled:[${disabled_list# }]"
+        else
+            rm -f "${tmp_file}"
+            echo "  ⚠ MCP gating via jq failed — keeping template defaults for ${CONFIG_FILE}"
+        fi
     fi
 }
 
@@ -30,9 +73,7 @@ _generate_claude_code_mcp_config() {
     local enabled_list=""
     local disabled_list=""
 
-    local all_servers="memory context7 time websearch github_rbi github_personal mcp-atlassian grafana docker sequential-thinking"
-
-    for server in ${all_servers}; do
+    for server in ${_MCP_ALL_SERVERS}; do
         local var_name
         var_name="CODEBOX_MCP_$(echo "${server}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
         local enabled="${!var_name:-true}"
@@ -84,7 +125,7 @@ _generate_claude_code_config() {
     esac
     jq -n --arg dm "${_settings_default_mode}" '{
         permissions: (
-            { allow: ["Bash(*)","Read(*)","Write(*)","Edit(*)","mcp__websearch__*","mcp__context7__*","mcp__sequential-thinking__*","mcp__time__*","mcp__docker__*","mcp__github__*","mcp__atlassian__*","mcp__grafana__*"], deny: [] }
+            { allow: ["Bash(*)","Read(*)","Write(*)","Edit(*)","mcp__memory__*","mcp__websearch__*","mcp__context7__*","mcp__sequential-thinking__*","mcp__time__*","mcp__docker__*","mcp__github_rbi__*","mcp__github_personal__*","mcp__mcp-atlassian__*","mcp__grafana__*"], deny: [] }
             + (if $dm != "" then { defaultMode: $dm } else {} end)
         ),
         env: { BASH_DEFAULT_TIMEOUT_MS: "300000" },

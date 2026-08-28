@@ -11,12 +11,20 @@
     "Skills: ['*'] = all skills, [] = none, or list specific skill names.",
     "MCPs: list of MCP server names from opencode.json to make available.",
     "",
+    "disabled_mcps switches off MCP servers the plugin injects itself (context7,",
+    "gh_grep). Those are separate definitions from the same-named entries in",
+    "opencode.json, so setting enabled:false there does not stop the plugin's",
+    "remote one — it has to be listed here as well.",
+    "",
     "Fallback: give each role's 'model' an array — first entry is the primary,",
     "the rest are tried in order if the primary is unavailable or errors out.",
     "Retry behaviour is controlled by fallback.enabled and fallback.maxRetries."
   ],
 
   "preset": "default",
+  "disabled_mcps": [
+    "context7"
+  ],
   "presets": {
     "default": {
       "orchestrator": {
