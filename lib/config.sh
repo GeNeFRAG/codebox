@@ -208,7 +208,7 @@ _configure_opencode() {
 
     # Determine the effective LLM URL based on whether the prefill proxy is enabled.
     # The proxy hasn't started yet, but the URL is deterministic — we'll verify later.
-    PREFILL_PROXY_ENABLED="${PREFILL_PROXY:-true}"
+    PREFILL_PROXY_ENABLED="${PREFILL_PROXY:-false}"
     if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
         export LLM_EFFECTIVE_URL="http://127.0.0.1:18080"
     else

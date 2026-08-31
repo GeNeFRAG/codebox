@@ -325,7 +325,7 @@ services:
 | `CLAUDE_CODE_PERMISSION_MODE` | Starting permission mode for Claude Code: `plan`, `acceptEdits`, `bypassPermissions`, `default`. Set to `plan` to force plan mode on every startup (written to `settings.json` and passed via `--permission-mode`). Claude Code only |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
-| `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `true`). OpenCode only. Set `false` to connect directly to `LLM_BASE_URL`. |
+| `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `false`). OpenCode only. Set `true` only for gateways that reject a trailing assistant message — see `proxy/README.md`. |
 | `PROXY_TIMEOUT` | Upstream timeout in seconds for the prefill proxy (default: `120`). OpenCode only |
 | `PROXY_LOG_LEVEL` | Prefill proxy verbosity: `debug` / `info` (default) / `warn` / `error`. OpenCode only |
 | `DOCKER_NETWORK_MODE` | Set to `host` on Linux to bypass Docker bridge NAT (~70-80ms savings). Not supported on Docker Desktop. |
@@ -594,7 +594,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 6. **Plugin install** (`lib/plugins.sh`) — Runs `npm install` in config dir if `package.json` exists (OpenCode only).
 7. **System checks** (`lib/system-checks.sh`) — Verifies Docker socket for MCP containers; marks `/workspace` as git safe.directory; validates `.git-credentials` and `.gitconfig-work` mounts; symlinks `/workspace` into `$HOME`.
 7b. **Context optimization** (`lib/context.sh`) — If `CODEBOX_SKILLS_BMAD=false` or `CODEBOX_GSD=false`, removes unused skill/agent files from `/workspace/.claude/` to reduce system prompt size. Files are backed up and restored on graceful shutdown (Claude Code only).
-8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` if `PREFILL_PROXY=true` (OpenCode only).
+8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` only if `PREFILL_PROXY=true` (OpenCode only; off by default).
 9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner and initialises the UI theme flag.
 10. **Mode launch** (`lib/modes.sh`) — Reads `CODEBOX_MODE` (default `web`):
     - `web` — starts the agent in a restart loop on `0.0.0.0:${CODEBOX_PORT:-3000}` (OpenCode only; not supported for Claude Code)
