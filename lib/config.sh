@@ -8,7 +8,7 @@ TEMPLATE="/opt/opencode/templates/opencode.json.template"
 CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 
 _ENVSUBST_VARS_MCP='${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}'
-_ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_TUI_THEME}'
+_ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_SMALL_MODEL} ${OPENCODE_TUI_THEME}'
 
 # ─── Shared MCP server list (single source of truth) ───────────────
 # Consumed by both _generate_config() (opencode .mcp[].enabled gating)
@@ -218,6 +218,14 @@ _configure_opencode() {
     # Default TUI theme if not set (OpenCode built-in themes: opencode,
     # catppuccin, dracula, tokyonight, gruvbox, monokai, flexoki, etc.)
     export OPENCODE_TUI_THEME="${OPENCODE_TUI_THEME:-opencode}"
+
+    # Model for OpenCode's internal "small" slot — session-title generation
+    # (Provider.getSmallModel). Left unset it resolves to the main model, so
+    # every new session spent a full opus call just to name itself. Haiku is
+    # declared in the llm provider block of the template. An unresolvable ID
+    # is caught as ProviderModelNotFoundError and degrades to the main model,
+    # so a non-llm main provider is not broken by this default.
+    export OPENCODE_SMALL_MODEL="${OPENCODE_SMALL_MODEL:-llm/claude-haiku-4-5}"
 
     _generate_config
     echo "  ✓ Config written to ${CONFIG_FILE}"

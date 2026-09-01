@@ -119,6 +119,7 @@
     }
   },
   "model": "${OPENCODE_MODEL}",
+  "small_model": "${OPENCODE_SMALL_MODEL}",
   "permission": {
     "*": "ask",
     "read": {
@@ -264,6 +265,11 @@
       "yes *": "allow",
       "true": "allow",
       "false": "allow",
+      ":": "allow",
+      "break": "allow",
+      "continue": "allow",
+      "alias *": "allow",
+      "nproc *": "allow",
       "test *": "allow",
       "sleep *": "allow",
       "date *": "allow",
