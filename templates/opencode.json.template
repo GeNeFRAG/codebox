@@ -1,6 +1,5 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "theme": "${OPENCODE_TUI_THEME}",
   "provider": {
     "llm": {
       "npm": "@ai-sdk/openai-compatible",

@@ -8,7 +8,7 @@ TEMPLATE="/opt/opencode/templates/opencode.json.template"
 CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 
 _ENVSUBST_VARS_MCP='${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}'
-_ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_SMALL_MODEL} ${OPENCODE_TUI_THEME}'
+_ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_SMALL_MODEL}'
 
 # ─── Shared MCP server list (single source of truth) ───────────────
 # Consumed by both _generate_config() (opencode .mcp[].enabled gating)
@@ -61,6 +61,44 @@ _generate_config() {
             echo "  ⚠ MCP gating via jq failed — keeping template defaults for ${CONFIG_FILE}"
         fi
     fi
+
+}
+
+# ─── Generate tui.json (theme lives here as of opencode 1.18) ──────
+# The opencode.json loader deletes top-level "theme"/"keybinds"/"tui" and
+# only migrates them into tui.json if that file does not already exist —
+# so rendering the theme into opencode.json is a silent no-op after the
+# first boot. Merge into tui.json instead so OPENCODE_TUI_THEME keeps
+# working on every restart, preserving any other TUI keys already set.
+_generate_tui_config() {
+    local tui_cfg="${CONFIG_DIR}/tui.json"
+    local tui_schema="https://opencode.ai/tui.json"
+
+    if grep -qE " ${tui_cfg}( |$)" /proc/self/mountinfo 2>/dev/null; then
+        echo "  → tui.json is bind-mounted — leaving user config in place"
+        return
+    fi
+    if ! command -v jq &>/dev/null; then
+        echo "  ⚠ jq not available — skipping tui.json theme update"
+        return
+    fi
+
+    if [ -s "${tui_cfg}" ]; then
+        if jq --arg t "${OPENCODE_TUI_THEME}" --arg s "${tui_schema}" \
+               '.["$schema"] = $s | .theme = $t' \
+               "${tui_cfg}" > "${tui_cfg}.tmp" 2>/dev/null; then
+            mv "${tui_cfg}.tmp" "${tui_cfg}"
+        else
+            rm -f "${tui_cfg}.tmp"
+            echo "  ⚠ tui.json is not valid JSON — leaving it untouched"
+            return
+        fi
+    else
+        jq -n --arg t "${OPENCODE_TUI_THEME}" --arg s "${tui_schema}" \
+            '{"$schema": $s, "theme": $t}' > "${tui_cfg}"
+    fi
+    chmod 600 "${tui_cfg}"
+    echo "  ✓ TUI theme set to ${OPENCODE_TUI_THEME} (${tui_cfg})"
 }
 
 # ─── Claude Code MCP server assembly ───────────────────────────────
@@ -229,6 +267,7 @@ _configure_opencode() {
 
     _generate_config
     echo "  ✓ Config written to ${CONFIG_FILE}"
+    _generate_tui_config
 
     # ─── Refresh oh-my-opencode-slim plugin config from template ───────
     # Baked into the image at build time by the Dockerfile, but copied
