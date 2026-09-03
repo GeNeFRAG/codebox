@@ -149,6 +149,11 @@ services:
       - ./lib:/opt/opencode/lib:ro
       - ./templates:/opt/opencode/templates:ro
       - ./proxy:/opt/opencode/proxy:ro
+      # Skills mount ONE PER SKILL, not `./skills:/root/.agents/skills`.
+      # That dir also holds agent-browser and simplify, installed into the
+      # image by `npx skills add`; a whole-dir bind mount would shadow both
+      # out of existence, and they are not in this repo to restore them.
+      - ./skills/atl:/root/.agents/skills/atl:ro
       - ./tmux/tmux.conf:/root/.tmux.conf:ro          # tmux reads config from ~/.tmux.conf
       - ./tmux:/opt/opencode/tmux:ro                   # scripts, themes, wrappers used at runtime
 

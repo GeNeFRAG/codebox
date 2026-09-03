@@ -83,6 +83,9 @@ services:
       - ./lib:/opt/opencode/lib:ro
       - ./templates:/opt/opencode/templates:ro
       - ./proxy:/opt/opencode/proxy:ro
+      # One line per skill — NOT `./skills:/root/.agents/skills`, which
+      # would shadow the image's agent-browser and simplify.
+      - ./skills/atl:/root/.agents/skills/atl:ro
       - ./tmux/tmux.conf:/root/.tmux.conf:ro
       - ./tmux:/opt/opencode/tmux:ro
 
@@ -130,6 +133,8 @@ services:
   #     - ./lib:/opt/opencode/lib:ro
   #     - ./templates:/opt/opencode/templates:ro
   #     - ./proxy:/opt/opencode/proxy:ro
+  #     # One per skill — a whole-dir mount shadows agent-browser/simplify.
+  #     - ./skills/atl:/root/.agents/skills/atl:ro
   #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
   #     - ./tmux:/opt/opencode/tmux:ro
 
@@ -188,6 +193,8 @@ services:
   #     - ./lib:/opt/opencode/lib:ro
   #     - ./templates:/opt/opencode/templates:ro
   #     - ./proxy:/opt/opencode/proxy:ro
+  #     # One per skill — a whole-dir mount shadows agent-browser/simplify.
+  #     - ./skills/atl:/root/.agents/skills/atl:ro
   #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
   #     - ./tmux:/opt/opencode/tmux:ro
 
@@ -240,6 +247,8 @@ services:
   #     - ./lib:/opt/opencode/lib:ro
   #     - ./templates:/opt/opencode/templates:ro
   #     - ./proxy:/opt/opencode/proxy:ro
+  #     # One per skill — a whole-dir mount shadows agent-browser/simplify.
+  #     - ./skills/atl:/root/.agents/skills/atl:ro
   #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
   #     - ./tmux:/opt/opencode/tmux:ro
 
@@ -294,6 +303,8 @@ services:
   #     - ./lib:/opt/opencode/lib:ro
   #     - ./templates:/opt/opencode/templates:ro
   #     - ./proxy:/opt/opencode/proxy:ro
+  #     # One per skill — a whole-dir mount shadows agent-browser/simplify.
+  #     - ./skills/atl:/root/.agents/skills/atl:ro
   #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
   #     - ./tmux:/opt/opencode/tmux:ro
 

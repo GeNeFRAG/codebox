@@ -269,6 +269,13 @@ RUN playwright install-deps chromium && rm -rf /var/lib/apt/lists/*
 # ─── atl (RBI-internal Atlassian CLI, optional) ────────────────────
 COPY --from=atl-builder /usr/local/bin/atl /usr/local/bin/atl
 
+# ─── Agent skills ─────────────────────────────────────────────────
+# /root/.agents/skills is the harness-neutral global skill dir read by
+# Pi (see its docs/skills.md). Skills here describe binaries baked in
+# above, so their lifetime matches the image's — hence the COPY rather
+# than a runtime write into the per-service config volume.
+COPY skills/ /root/.agents/skills/
+
 # ─── tmux configuration (TUI mode) ────────────────────────────────
 COPY tmux/tmux.conf /root/.tmux.conf
 COPY tmux/ /opt/opencode/tmux/

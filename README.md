@@ -289,9 +289,21 @@ volumes:
 
 When `LLM_BASE_URL` is set, `lib/config.sh` writes a custom `llm` provider into `/root/.pi/agent/models.json` whose `apiKey` field is the *literal string* `$LLM_API_KEY` — Pi expands this from its environment at runtime, so the secret itself never lands on disk. No `auth.json` is written for Pi (unlike OpenCode/Claude Code) — Pi's own docs warn against configuring a credential in both `auth.json` and `models.json` for the same provider. Failing that, Pi reads any standard provider key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...). OAuth `/login` does not work in headless Docker.
 
-### MCP servers and sub-agents in Pi mode
+### MCP servers, sub-agents, and skills in Pi mode
 
 Pi has no MCP support by design (its homepage advertises "No MCP") and no sub-agent/preset system — `CODEBOX_MCP_*` and `templates/oh-my-opencode-slim.json.template` have no effect under `CODEBOX_APP=pi`.
+
+Pi's substitute for MCP is a CLI plus a **skill** that tells the model the CLI exists. Skills in `skills/` are `COPY`d to `/root/.agents/skills/` (Pi's harness-neutral global skill dir) in the Dockerfile's churn zone, alongside `agent-browser` and `simplify` which are installed there via `npx skills add`. Only skill *descriptions* stay in context; the model `read`s the full `SKILL.md` on demand.
+
+| Skill | Wraps |
+|-------|-------|
+| `skills/atl/SKILL.md` | `atl` — Jira, Confluence, Zephyr Scale; stands in for the `mcp_atlassian` MCP server under Pi |
+
+A skill's lifetime should match the binary it documents, which is why these are baked into the image rather than written into the per-service `/root/.pi/agent` volume at startup. Keep them short and point at `--help` rather than restating flags — duplicated command docs go stale. Note `.dockerignore` excludes `*.md`, but only at the context root, so nested `skills/*/SKILL.md` is still sent (verified).
+
+Each skill is *also* bind-mounted in the dev-iteration block, so editing one only needs `./codebox.sh restart`; a `rebuild` is required only when **adding** a skill (the new dir needs both a `COPY` and a mount line).
+
+> ⚠ Mount skills **one line per skill** — never `./skills:/root/.agents/skills`. That directory also holds `agent-browser` and `simplify`, installed into the image by `npx skills add`; a whole-directory bind mount replaces the container's copy and both would silently disappear, since neither lives in this repo to restore them.
 
 ## Multi-Repo Setup
 
