@@ -62,6 +62,24 @@ _generate_config() {
         fi
     fi
 
+    # ─── Provider allowlist via OPENCODE_ENABLED_PROVIDERS ─────────────
+    # Only the llm gateway is credentialed by default, yet opencode
+    # auto-discovers ~450 extra models from models.dev that are selectable
+    # but unusable. Space-separated list; default "llm". Set it to an empty
+    # string to disable the allowlist (e.g. when host-auth.json contributes
+    # github-copilot or other authenticated providers — add those IDs here).
+    local _enabled_providers="${OPENCODE_ENABLED_PROVIDERS-llm}"
+    if [ -n "${_enabled_providers}" ] && command -v jq &>/dev/null; then
+        local _ep_json
+        _ep_json=$(printf '%s\n' ${_enabled_providers} | jq -R . | jq -s -c .)
+        if jq --argjson ep "${_ep_json}" '.enabled_providers = $ep' \
+               "${CONFIG_FILE}" > "${CONFIG_FILE}.tmp" 2>/dev/null; then
+            mv "${CONFIG_FILE}.tmp" "${CONFIG_FILE}"
+            chmod 600 "${CONFIG_FILE}"
+        else
+            rm -f "${CONFIG_FILE}.tmp"
+        fi
+    fi
 }
 
 # ─── Generate tui.json (theme lives here as of opencode 1.18) ──────

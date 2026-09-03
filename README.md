@@ -316,6 +316,7 @@ services:
 | `CODEBOX_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
 | `CODEBOX_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime: `Option-t` |
 | `OPENCODE_TUI_THEME` | OpenCode TUI color scheme (default: `opencode`). Built-in themes: `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix`. Change at runtime with `/theme`. OpenCode only |
+| `OPENCODE_ENABLED_PROVIDERS` | Space-separated provider allowlist (default: `llm`). Without this, OpenCode auto-discovers ~450 unusable extra models from models.dev. Set to an empty string to disable the allowlist. Add other authenticated provider IDs here (e.g. `github-copilot`) if `host-auth.json` supplies them. OpenCode only |
 | `CODEBOX_TITLE` | Browser tab title for tui/tmux modes. Auto-detected from Compose service name if not set |
 | `OPENCODE_MODEL_FALLBACK` | Fallback model if LLM gateway is unreachable at startup (e.g. `github-copilot/gemini-2.5-pro`). OpenCode only |
 | `CODEBOX_EXTRA_ARGS` | Extra arguments passed to the agent binary |
