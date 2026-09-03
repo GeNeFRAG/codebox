@@ -34,6 +34,12 @@ ARG CLAUDE_CODE_VERSION=latest
 ARG CACHEBUST_CLAUDE_CODE=0
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
+# Install Pi coding agent globally
+# --ignore-scripts is what pi.dev's own install docs specify.
+ARG PI_VERSION=latest
+ARG CACHEBUST_PI=0
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
+
 # Install provider SDKs, plugins, and oh-my-opencode-slim
 # Pins are EXACT (no "latest"/caret ranges) so npm never needs to revalidate
 # a tag against the registry — lib/plugins.sh compares an md5 fingerprint of
@@ -121,12 +127,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gettext-base \
         unzip \
         ripgrep \
+        fd-find \
         tini \
         tmux \
         zsh \
         python3 \
         sqlite3 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
 # ─── Zsh + Oh My Zsh (shell pane) ────────────────────────────────
 RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /root/.oh-my-zsh \
@@ -199,6 +207,16 @@ RUN go_bin=$(find /usr/local/lib/node_modules/opencode-ai/bin -maxdepth 1 -type 
         ln -sf /usr/local/bin/opencode-go /usr/local/bin/opencode; \
     fi && \
     ln -sf /usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe /usr/local/bin/claude && \
+    pi_dir=/usr/local/lib/node_modules/@earendil-works/pi-coding-agent && \
+    pi_bin=$(node -e 'const b=require(process.argv[1]+"/package.json").bin; process.stdout.write(typeof b==="string"?b:(b&&(b.pi||Object.values(b)[0]))||"")' "$pi_dir" 2>/dev/null || true) && \
+    if [ -z "$pi_bin" ] || [ ! -f "$pi_dir/$pi_bin" ]; then \
+        pi_bin=$(cd "$pi_dir" 2>/dev/null && find dist bin -maxdepth 2 -type f -name '*cli*.js' 2>/dev/null | head -1 || true); \
+    fi && \
+    if [ -n "$pi_bin" ] && [ -f "$pi_dir/$pi_bin" ]; then \
+        ln -sf "$pi_dir/$pi_bin" /usr/local/bin/pi && chmod +x "$pi_dir/$pi_bin"; \
+    else \
+        echo "WARNING: could not resolve pi binary under $pi_dir — /usr/local/bin/pi will be missing (CODEBOX_APP=pi will fail at startup)"; \
+    fi && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-memory/dist/index.js /usr/local/bin/mcp-server-memory && \
     ln -sf ../lib/node_modules/@upstash/context7-mcp/dist/index.js /usr/local/bin/context7-mcp && \
     ln -sf ../lib/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js /usr/local/bin/mcp-server-sequential-thinking && \
@@ -213,7 +231,8 @@ RUN mkdir -p /workspace \
     /root/.local/share/opencode \
     /root/.config/opencode/skills \
     /root/.agents/skills \
-    /root/.claude
+    /root/.claude \
+    /root/.pi/agent
 
 WORKDIR /workspace
 

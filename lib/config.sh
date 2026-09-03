@@ -1,11 +1,14 @@
 # ─── lib/config.sh ──────────────────────────────────────────────────────────
-# Config generation for coding agents: opencode, claude-code.
+# Config generation for coding agents: opencode, claude-code, pi.
 # Also handles auth.json writing and host-auth merging for opencode.
 
 CONFIG_DIR="/root/.config/opencode"
 DATA_DIR="/root/.local/share/opencode"
 TEMPLATE="/opt/opencode/templates/opencode.json.template"
 CONFIG_FILE="${CONFIG_DIR}/opencode.json"
+# Pi's default config dir (relocatable via PI_CODING_AGENT_DIR); matches
+# the mkdir already done for it in the Dockerfile.
+PI_CONFIG_DIR="/root/.pi/agent"
 
 _ENVSUBST_VARS_MCP='${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}'
 _ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_SMALL_MODEL}'
@@ -328,6 +331,147 @@ _configure_opencode() {
     elif [ -f "${HOST_AUTH}" ] && [ -s "${HOST_AUTH}" ] && [ ! -f "${AUTH_FILE}" ]; then
         cp "${HOST_AUTH}" "${AUTH_FILE}"
         echo "  ✓ Using host auth.json (no local auth configured)"
+    fi
+}
+
+# ─── Pi config generation ───────────────────────────────────────────
+# Pi (pi.dev) reads its config from PI_CODING_AGENT_DIR (default
+# ~/.pi/agent, matched by PI_CONFIG_DIR/the Dockerfile's mkdir). Unlike
+# opencode/claude-code, Pi has no MCP support by design — do not add any.
+_configure_pi() {
+    echo "→ Generating Pi config..."
+
+    # 1. Pin the config dir so every Pi invocation (including tmux
+    #    respawns, which re-exec the binary) agrees on where it lives.
+    export PI_CODING_AGENT_DIR="${PI_CONFIG_DIR}"
+    mkdir -p "${PI_CODING_AGENT_DIR}"
+    chmod 700 "${PI_CODING_AGENT_DIR}"
+
+    # 2. Disable startup update-checks/telemetry network calls by default —
+    #    containers shouldn't phone home on every boot. User-overridable.
+    export PI_OFFLINE="${PI_OFFLINE:-1}"
+    if [ "${PI_OFFLINE}" = "1" ] || [ "${PI_OFFLINE}" = "true" ]; then
+        echo "  ✓ PI_OFFLINE enabled (no update-check/telemetry network calls)"
+    else
+        echo "  → PI_OFFLINE disabled (PI_OFFLINE=${PI_OFFLINE})"
+    fi
+
+    local models_file="${PI_CODING_AGENT_DIR}/models.json"
+    local settings_file="${PI_CODING_AGENT_DIR}/settings.json"
+    local _models_written="false"
+
+    # 3. Generate models.json — only if we have a gateway to point at.
+    #    The apiKey is written as the literal string "$LLM_API_KEY" (NOT
+    #    the expanded secret) so Pi interpolates it from the environment
+    #    at runtime; the secret itself never touches disk. Do NOT also
+    #    write an auth.json for Pi — the docs warn against configuring a
+    #    credential in both auth.json and models.json for the same
+    #    provider, and this env-interpolation route already covers it.
+    if [ -n "${LLM_BASE_URL:-}" ]; then
+        if grep -qE " ${models_file}( |$)" /proc/self/mountinfo 2>/dev/null; then
+            echo "  → models.json is bind-mounted — leaving user config in place"
+        else
+            local _pi_api="${PI_API:-openai-completions}"
+            case "${_pi_api}" in
+                openai-completions|openai-responses|anthropic-messages|google-generative-ai) ;;
+                *)
+                    echo "  ⚠ Invalid PI_API='${_pi_api}' — falling back to openai-completions"
+                    echo "    Valid: openai-completions openai-responses anthropic-messages google-generative-ai"
+                    _pi_api="openai-completions"
+                    ;;
+            esac
+
+            local _models_json="[]"
+            if [ -n "${PI_MODEL:-}" ]; then
+                _models_json=$(jq -n --arg id "${PI_MODEL}" \
+                    '[{id: $id, name: $id, reasoning: true, input: ["text","image"], contextWindow: 200000}]')
+            else
+                echo "  ⚠ PI_MODEL not set — no model declared; pick one interactively via /model"
+            fi
+
+            jq -n --arg baseUrl "${LLM_BASE_URL}" --arg api "${_pi_api}" \
+                --arg apiKey '$LLM_API_KEY' --argjson models "${_models_json}" '{
+                providers: {
+                    llm: {
+                        baseUrl: $baseUrl,
+                        api: $api,
+                        apiKey: $apiKey,
+                        authHeader: true,
+                        models: $models
+                    }
+                }
+            }' > "${models_file}"
+            chmod 600 "${models_file}"
+            echo "  ✓ models.json written (${LLM_BASE_URL}, api=${_pi_api})"
+            _models_written="true"
+        fi
+    else
+        echo "  → models.json skipped (LLM_BASE_URL not set)"
+    fi
+
+    # 4. Generate settings.json.
+    if grep -qE " ${settings_file}( |$)" /proc/self/mountinfo 2>/dev/null; then
+        echo "  → settings.json is bind-mounted — leaving user config in place"
+    else
+        # defaultProjectTrust: default "always" — /workspace is the user's
+        # own mounted repo and CodeBox already pre-trusts it for Claude Code
+        # (hasTrustDialogAccepted: true, above), so this is the consistent
+        # choice, and it avoids a blocking trust prompt in the headless
+        # tmux/ttyd pane.
+        local _pi_trust="${PI_PROJECT_TRUST:-always}"
+        case "${_pi_trust}" in
+            ask|always|never) ;;
+            *)
+                echo "  ⚠ Invalid PI_PROJECT_TRUST='${_pi_trust}' — falling back to always"
+                echo "    Valid: ask always never"
+                _pi_trust="always"
+                ;;
+        esac
+
+        local _pi_theme="dark"
+        [ "${CODEBOX_THEME:-dark}" = "light" ] && _pi_theme="light"
+
+        local _pi_thinking=""
+        if [ -n "${PI_THINKING:-}" ]; then
+            case "${PI_THINKING}" in
+                off|minimal|low|medium|high|xhigh|max) _pi_thinking="${PI_THINKING}" ;;
+                *)
+                    echo "  ⚠ Ignoring invalid PI_THINKING='${PI_THINKING}'"
+                    echo "    Valid: off minimal low medium high xhigh max"
+                    ;;
+            esac
+        fi
+
+        local _pi_proxy="${HTTPS_PROXY:-${HTTP_PROXY:-}}"
+
+        jq -n \
+            --arg trust "${_pi_trust}" \
+            --arg theme "${_pi_theme}" \
+            --arg provider "llm" \
+            --arg model "${PI_MODEL:-}" \
+            --arg thinking "${_pi_thinking}" \
+            --arg proxy "${_pi_proxy}" \
+            --argjson models_written "${_models_written}" '
+            {
+                defaultProjectTrust: $trust,
+                theme: $theme,
+                enableInstallTelemetry: false,
+                enableAnalytics: false
+            }
+            + (if $models_written then {defaultProvider: $provider} else {} end)
+            + (if $model != "" then {defaultModel: $model} else {} end)
+            + (if $thinking != "" then {defaultThinkingLevel: $thinking} else {} end)
+            + (if $proxy != "" then {httpProxy: $proxy} else {} end)
+        ' > "${settings_file}"
+        chmod 600 "${settings_file}"
+        echo "  ✓ settings.json written (trust=${_pi_trust}, theme=${_pi_theme})"
+    fi
+
+    # 5. Credential presence check — Pi can also authenticate from
+    #    standard provider env vars, not just models.json's apiKey field.
+    if [ -z "${LLM_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
+        echo "  ⚠ No API key set — Pi requires LLM_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY"
+        echo "    Note: OAuth /login does NOT work in headless Docker"
     fi
 }
 

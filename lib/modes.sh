@@ -30,6 +30,13 @@ _generate_ttyd_index() {
     # 1. Remove the 5px terminal padding
     # 2. Sync body/container background with the terminal's background color
     #    so sub-pixel gaps from character-cell rounding are invisible.
+    # 3. Emit modified-Enter keys. xterm.js flattens Shift-Enter and
+    #    Ctrl-Enter to a bare CR (its keydown handler honours only Alt),
+    #    so agents that bind them (Pi: tui.input.newLine = shift+enter)
+    #    never see them. We re-encode them as xterm modifyOtherKeys
+    #    (ESC [ 27 ; mod ; 13 ~), which tmux 3.3a parses and forwards
+    #    when `extended-keys on` is set (see tmux/tmux.conf).
+    #    Alt-Enter is left alone — xterm.js already sends ESC CR.
     cat >> "${_TTYD_INDEX}" <<'PATCH'
 <style>body,#terminal-container{background:#000!important}#terminal-container .terminal{padding:0!important;height:100%!important}</style>
 <script>
@@ -44,6 +51,21 @@ _generate_ttyd_index() {
   }
   new MutationObserver(sync).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["style"]});
   setInterval(sync,500);
+
+  var bound=false;
+  function bindKeys(){
+    var t=window.term;
+    if(bound||!t||!t.attachCustomKeyEventHandler||!t.input)return;
+    bound=true;
+    t.attachCustomKeyEventHandler(function(e){
+      if(e.type!=="keydown"||e.key!=="Enter"||e.altKey)return true;
+      if(!e.shiftKey&&!e.ctrlKey)return true;
+      var mod=1+(e.shiftKey?1:0)+(e.ctrlKey?4:0);
+      t.input("\x1b[27;"+mod+";13~");
+      return false;
+    });
+  }
+  var tries=setInterval(function(){bindKeys();if(bound)clearInterval(tries);},200);
 })();
 </script>
 PATCH
@@ -137,10 +159,12 @@ if [ "${CODEBOX_MODE}" = "tmux" ]; then
 
 else
     # ── Web mode (default) ───────────────────────────────────────
-    if [ "${CODEBOX_APP}" = "claude-code" ]; then
-        echo "  ✗ FATAL: web mode is not supported for Claude Code — use tmux"
-        exit 1
-    fi
+    case "${CODEBOX_APP}" in
+        claude-code|pi)
+            echo "  ✗ FATAL: web mode is not supported for ${APP_TITLE_PREFIX} — use tmux"
+            exit 1
+            ;;
+    esac
 
     # OpenCode web mode
     echo "→ Starting opencode web on 0.0.0.0:${CODEBOX_PORT:-3000}..."

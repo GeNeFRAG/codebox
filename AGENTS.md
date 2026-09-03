@@ -1,6 +1,6 @@
 # Project Context
 
-This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://github.com/anthropics/claude-code). It does not contain the agent applications themselves — it packages them into a container with MCP servers, a prefill proxy, and browser-accessible UI modes (web, tui, tmux).
+This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://github.com/anthropics/claude-code), [Pi](https://pi.dev). It does not contain the agent applications themselves — it packages them into a container with MCP servers, a prefill proxy, and browser-accessible UI modes (web, tui, tmux).
 
 ## Key Files
 
@@ -8,7 +8,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 |------|--------------------|
 | `entrypoint.sh` | Container startup orchestrator — sources all `lib/` scripts in order |
 | `lib/env.sh` | Loads `.env` file; warns about non-reloadable variables; deprecation shim for old `OPENCODE_*` shared vars; aliases credential names for plugin-supplied MCP servers (`JIRA_TOKEN` → `JIRA_PERSONAL_TOKEN`, `CONFLUENCE_TOKEN` → `CONFLUENCE_PERSONAL_TOKEN`, `GRAFANA_API_KEY` → `GRAFANA_TOKEN`) |
-| `lib/config.sh` | Config generation for both agents (opencode, claude-code), auth.json writing, host-auth merging; also merges the TUI theme into `tui.json` (opencode.json's own `theme` key is migrated away and ignored after first boot) and applies the `OPENCODE_ENABLED_PROVIDERS` allowlist to opencode.json |
+| `lib/config.sh` | Config generation for all three agents (opencode, claude-code, pi), auth.json writing, host-auth merging; also merges the TUI theme into `tui.json` (opencode.json's own `theme` key is migrated away and ignored after first boot) and applies the `OPENCODE_ENABLED_PROVIDERS` allowlist to opencode.json |
 | `lib/ca-cert.sh` | Corporate CA certificate installation into system store |
 | `lib/plugins.sh` | OpenCode npm plugin installation (oh-my-opencode-slim) |
 | `lib/system-checks.sh` | Docker socket check, git safe.directory, workspace symlink, git credentials/work config validation |
@@ -33,14 +33,14 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 
 ## Conventions
 
-- Environment variables use the `CODEBOX_` prefix for shared settings (app, mode, port, theme, etc.). OpenCode-specific vars (`OPENCODE_MODEL`, `OPENCODE_MODEL_FALLBACK`, `OPENCODE_TUI_THEME`) keep the `OPENCODE_` prefix. A deprecation shim in `lib/env.sh` maps old `OPENCODE_*` shared vars to `CODEBOX_*` with a warning.
+- Environment variables use the `CODEBOX_` prefix for shared settings (app, mode, port, theme, etc.). OpenCode-specific vars (`OPENCODE_MODEL`, `OPENCODE_MODEL_FALLBACK`, `OPENCODE_TUI_THEME`) keep the `OPENCODE_` prefix; Pi-specific vars (`PI_MODEL`, `PI_THINKING`, `PI_API`, `PI_PROJECT_TRUST`, `PI_OFFLINE`) keep the `PI_` prefix. A deprecation shim in `lib/env.sh` maps old `OPENCODE_*` shared vars to `CODEBOX_*` with a warning.
 - Environment variables are documented in `.env.example` and substituted into configs by `lib/config.sh` via `envsubst`.
 - Most `CODEBOX_*` vars are read at **runtime** by `entrypoint.sh`/`lib/`, so a `restart` picks them up. `CODEBOX_VERSION` is a Docker **build arg** declared as `ARG` in the `Dockerfile` and passed through `build.args` in `docker-compose.yml`; it requires `./codebox.sh rebuild`. Keep the two groups distinguishable in `.env.example`.
 - Prefer a **runtime** var over a build arg for anything optional. A build arg forks the image (one variant per value), which defeats per-service configuration since all services share one `build:` block. `CODEBOX_PLAYWRIGHT` is the reference case: the image bakes only the cheap, universal part (Chrome's system libraries via `playwright install-deps`) and `lib/playwright.sh` fetches the expensive per-service part (browser binaries) at startup into a per-service named volume.
 - The `Dockerfile` is ordered cheap-and-stable → expensive-and-stable → churny, with an explicit **churn zone** marker near the bottom. Layers below the marker re-run on most builds and must stay trivial. In particular `COPY --from=atl-builder` must stay there: `codebox.sh:_clone_atl()` re-clones into a fresh temp dir every invocation, so the `atl` build context digest changes on every build and invalidates everything beneath that `COPY`.
 - Shell scripts target `bash` and run inside the container at `/opt/opencode/`. The `entrypoint.sh` is the only script executed directly; everything else is sourced.
 - The `oh-my-opencode-slim` plugin is an npm package baked into the image. Its config template lives at `templates/oh-my-opencode-slim.json.template`; the active config lives at `/root/.config/opencode/oh-my-opencode-slim.json`.
-- The two agent binaries are available in the container at `/usr/local/bin/`: `opencode` and `claude` (Claude Code). `CODEBOX_APP` selects which one runs.
+- The three agent binaries are available in the container at `/usr/local/bin/`: `opencode`, `claude` (Claude Code), and `pi` (Pi). `CODEBOX_APP` selects which one runs.
 - **The container can reach the host daemon, so it can kill itself.** `/var/run/docker.sock` is mounted for MCP sibling containers, which also means a `stop`/`rm`/`down` issued in here takes down the container running the command. Two layers guard it, both **allowlists** — a blocklist already failed open once by omitting `stop` and `prune`:
   - `codebox.sh` permits only `logs`/`shell`/`status`/`urls`/`version` when `/run/codebox-container`, `/.dockerenv`, or `/run/.containerenv` is present.
   - `lib/guard-bin/docker` shims the CLI and refuses container-destroying verbs aimed at this container or a Compose-managed sibling, `docker compose` mutations, and host-wide prunes.
@@ -53,11 +53,11 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 `entrypoint.sh` sources `lib/` scripts in this order. Each phase is numbered to match the comments in `entrypoint.sh`:
 
 1. **Load env** — `lib/env.sh`: reads `.env`, applies deprecation shims (`OPENCODE_*` → `CODEBOX_*`).
-2. **Agent selection** — inlined: `CODEBOX_APP` (default: `opencode`) sets `APP_TITLE_PREFIX` and drives all downstream branches.
+2. **Agent selection** — inlined: `CODEBOX_APP` (default: `opencode`; also `claude-code`, `pi`) sets `APP_TITLE_PREFIX` and drives all downstream branches.
 3. **CA cert path** — inlined: runs `docker inspect` to resolve `CA_CERT_PATH` to the real host path so MCP sibling containers can mount it.
 3b. **Docker guard** — `lib/docker-guard.sh:_install_docker_guard`: prepends `lib/guard-bin/` to `PATH` so `docker` resolves to the guard shim, exports `CODEBOX_COMPOSE_PROJECT`, and writes `/run/codebox-container`. Runs before any user-reachable shell exists; read-only docker calls in later phases pass through untouched.
 4. **Cleanup trap** — `lib/proxy.sh` sourced here for `_cleanup`; SIGTERM/SIGINT kill the background proxy process.
-5. **Config generation** — `lib/config.sh`: dispatches to `_configure_opencode` or `_generate_claude_code_config` based on `CODEBOX_APP`. Both paths gate MCP servers on `CODEBOX_MCP_<NAME>` from one shared server list (`_MCP_ALL_SERVERS`).
+5. **Config generation** — `lib/config.sh`: dispatches to `_configure_opencode`, `_generate_claude_code_config`, or `_configure_pi` based on `CODEBOX_APP`. The opencode/claude-code paths gate MCP servers on `CODEBOX_MCP_<NAME>` from one shared server list (`_MCP_ALL_SERVERS`); `_configure_pi` gates none — Pi has no MCP support.
 6. **Corporate CA cert** — `lib/ca-cert.sh`: installs CA bundle into the system trust store (no-op if `CA_CERT_PATH` is unset).
 7. **TLS cert for ttyd** — `lib/tls.sh`: generates a self-signed cert for the ttyd web terminal (tui/tmux modes only).
 8. **OpenCode plugins** — `lib/plugins.sh`: skips `npm install` when the baked `.deps-fingerprint` still matches `package.json`; re-runs only if the fingerprint is stale or `node_modules` was wiped (OpenCode only).

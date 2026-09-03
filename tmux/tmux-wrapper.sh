@@ -29,19 +29,25 @@ if [ "${1:-}" = "--loop" ]; then
         export COLORFGBG="15;0"
     fi
     # On respawn (pane-died or theme toggle), pass --continue to resume
-    # the last session instead of starting a new one. Both OpenCode and
-    # Claude Code support this flag (claude -c / opencode --continue).
+    # the last session instead of starting a new one. OpenCode, Claude Code,
+    # and Pi all support this flag (claude -c / opencode --continue / pi -c).
     _continue_flag=""
     if [ "${2:-}" = "--respawn" ]; then
         _continue_flag="--continue"
     fi
     # Re-resolve if stored path is stale (symlink broke, binary moved, etc.)
     if [ -z "${APP_BIN:-}" ] || [ ! -x "${APP_BIN}" ]; then
-        if [ "${CODEBOX_APP:-opencode}" = "claude-code" ]; then
-            APP_BIN=$(which claude 2>/dev/null || true)
-        else
-            APP_BIN=$(which opencode 2>/dev/null || true)
-        fi
+        case "${CODEBOX_APP:-opencode}" in
+            claude-code)
+                APP_BIN=$(which claude 2>/dev/null || true)
+                ;;
+            pi)
+                APP_BIN=$(which pi 2>/dev/null || true)
+                ;;
+            *)
+                APP_BIN=$(which opencode 2>/dev/null || true)
+                ;;
+        esac
     fi
     if [ -z "${APP_BIN:-}" ] || [ ! -x "${APP_BIN}" ]; then
         echo "ERROR: Cannot find agent binary (APP_BIN='${APP_BIN:-<unset>}')."

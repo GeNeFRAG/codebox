@@ -1,6 +1,6 @@
 # CodeBox
 
-Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://github.com/anthropics/claude-code)— AI coding agents — entirely inside Docker, accessible from any browser. No local Node.js, no CLI install, no environment clutter. Pick a UI mode, point it at your LLM provider, supply an API key, and open `localhost:3000`. Run multiple repos side-by-side — each gets its own container, port, and data volumes.
+Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://github.com/anthropics/claude-code), [Pi](https://pi.dev)— AI coding agents — entirely inside Docker, accessible from any browser. No local Node.js, no CLI install, no environment clutter. Pick a UI mode, point it at your LLM provider, supply an API key, and open `localhost:3000`. Run multiple repos side-by-side — each gets its own container, port, and data volumes.
 
 **Coding agent** (set `CODEBOX_APP` in `.env`):
 
@@ -8,6 +8,7 @@ Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://g
 |-------|---------------|--------------|
 | **OpenCode** (default) | `opencode` | [OpenCode AI](https://github.com/opencode-ai/opencode) — supports `web`and `tmux` modes |
 | **Claude Code** | `claude-code` | [Anthropic Claude Code](https://github.com/anthropics/claude-code) — supports `tmux` modes only |
+| **Pi** | `pi` | [Pi coding agent](https://pi.dev) — supports `tmux` mode only; no MCP, no sub-agents |
 
 **UI mode** (set `CODEBOX_MODE` in `.env`), all served in the browser:
 
@@ -240,6 +241,58 @@ The MCP config for Claude Code is assembled at runtime from individual server de
 
 When running Claude Code in `tmux` mode, the status bar uses a simplified display (`claude-code │ branch`) — model and context-size details are unavailable because Claude Code manages its own model selection internally. You can set the default model via `CLAUDE_CODE_MODEL` in `.env` (e.g. `claude-opus-4-6`). The agent monitor keybindings (`Option-m`, `Option-Shift-m`) show an informational message instead.
 
+## Pi Mode
+
+Set `CODEBOX_APP=pi` in `.env` to run [Pi](https://pi.dev) instead of OpenCode. Pi is tmux-only (`web` is a fatal error, same as Claude Code), has no MCP support, and has no sub-agent/preset system — `CODEBOX_MCP_*` and the `oh-my-opencode-slim` role config have no effect under this app.
+
+### Setup
+
+Follow the [Quick Start](#quick-start) steps, setting these values in `.env`:
+
+```bash
+CODEBOX_APP=pi
+CODEBOX_MODE=tmux         # web mode is not supported for Pi
+LLM_BASE_URL=https://your-llm-provider.example.com
+LLM_API_KEY=your-llm-api-key-here
+PI_MODEL=claude-opus-5
+```
+
+For multi-repo setups, add the Pi data volume to your service in `docker-compose.override.yml`:
+
+```yaml
+services:
+  my-project:
+    environment:
+      !override
+      - CODEBOX_APP=pi
+      - CODEBOX_MODE=tmux
+      - CODEBOX_PORT=3005
+    volumes:
+      !override
+      - ${REPOS_PATH:-~/repos}/my-project:/workspace
+      - pi-data-my-project:/root/.pi/agent
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./.env:/opt/opencode/.env:ro
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${HOME}/.gitconfig:/root/.gitconfig:ro
+
+volumes:
+  pi-data-my-project:
+    name: pi-data-my-project
+```
+
+> **Note:** Always mount a named volume to `/root/.pi/agent` — this persists Pi's session data and settings across container restarts. Without it, all session data is lost on `docker compose down`. Pi does not dirty the mounted `/workspace` repo — sessions live in the config dir, not the project.
+
+> **Upgrading Pi?** After rebuilding the image, run `docker volume rm pi-data-my-project` if you encounter compatibility issues with stale session data.
+
+### Authentication
+
+When `LLM_BASE_URL` is set, `lib/config.sh` writes a custom `llm` provider into `/root/.pi/agent/models.json` whose `apiKey` field is the *literal string* `$LLM_API_KEY` — Pi expands this from its environment at runtime, so the secret itself never lands on disk. No `auth.json` is written for Pi (unlike OpenCode/Claude Code) — Pi's own docs warn against configuring a credential in both `auth.json` and `models.json` for the same provider. Failing that, Pi reads any standard provider key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...). OAuth `/login` does not work in headless Docker.
+
+### MCP servers and sub-agents in Pi mode
+
+Pi has no MCP support by design (its homepage advertises "No MCP") and no sub-agent/preset system — `CODEBOX_MCP_*` and `templates/oh-my-opencode-slim.json.template` have no effect under `CODEBOX_APP=pi`.
+
 ## Multi-Repo Setup
 
 Each project gets its own container, port, and data volumes.
@@ -304,15 +357,26 @@ services:
 
 > **Note:** Do not set `CODEBOX_MODE` for Claude Code — only `tui` and `tmux` are valid; `web` is a fatal error.
 
+**For Pi** — set these in `.env`:
+
+| Variable | Description |
+|----------|-------------|
+| `CODEBOX_APP` | Set to `pi` |
+| `LLM_BASE_URL` | *(Optional)* OpenAI-compatible API endpoint — Pi also reads `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` directly if unset |
+| `LLM_API_KEY` | *(Optional)* API key for the LLM provider — expanded from the environment at runtime, never written to disk |
+| `PI_MODEL` | *(Optional)* Model identifier. Leave unset to pick one interactively with `/model` |
+
+> **Note:** Do not set `CODEBOX_MODE` for Pi — only `tui` and `tmux` are valid; `web` is a fatal error.
+
 
 <details>
 <summary><strong>All environment variables</strong></summary>
 
 | Variable | Description |
 |----------|-------------|
-| `CODEBOX_APP` | `opencode` (default) — OpenCode AI agent · `claude-code` — Anthropic Claude Code agent |
+| `CODEBOX_APP` | `opencode` (default) — OpenCode AI agent · `claude-code` — Anthropic Claude Code agent · `pi` — Pi coding agent ([pi.dev](https://pi.dev)) |
 | `CODEBOX_PORT` | Web UI / TUI port (default: `3000`) |
-| `CODEBOX_MODE` | `web` (default, OpenCode only) · `tmux` (both agents). `tui` is accepted as an alias for `tmux`. For Claude Code, `web` is a fatal error. |
+| `CODEBOX_MODE` | `web` (default, OpenCode only) · `tmux` (all agents). `tui` is accepted as an alias for `tmux`. For Claude Code and Pi, `web` is a fatal error. |
 | `CODEBOX_VERSION` | Pin opencode-ai version for builds (default: `latest`) |
 | `CODEBOX_THEME` | Terminal theme: `dark` (default) or `light`. Controls tmux status bar, borders, and terminal background. Toggle at runtime: `Option-t` |
 | `OPENCODE_TUI_THEME` | OpenCode TUI color scheme (default: `opencode`). Built-in themes: `catppuccin`, `dracula`, `tokyonight`, `gruvbox`, `monokai`, `flexoki`, `onedark`, `tron`, `nord`, `everforest`, `ayu`, `kanagawa`, `matrix`. Change at runtime with `/theme`. OpenCode only |
@@ -324,6 +388,11 @@ services:
 | `TZ` | Timezone for timestamps in the agent monitor and tmux status bar (default: `UTC`) |
 | `CLAUDE_CODE_MODEL` | Default model for Claude Code (e.g. `claude-opus-4-6`, `claude-sonnet-4-6`). Exported as `CLAUDE_MODEL` at runtime. Leave unset to use Claude Code's built-in default. Claude Code only |
 | `CLAUDE_CODE_PERMISSION_MODE` | Starting permission mode for Claude Code: `plan`, `acceptEdits`, `bypassPermissions`, `default`. Set to `plan` to force plan mode on every startup (written to `settings.json` and passed via `--permission-mode`). Claude Code only |
+| `PI_MODEL` | Default model for Pi, written to `settings.json` as `defaultModel` and passed via `--model`. Leave unset to pick one interactively with `/model`. Pi only |
+| `PI_THINKING` | Thinking level for Pi: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Written to `settings.json` as `defaultThinkingLevel` and passed via `--thinking`. Leave unset for Pi's built-in default. Pi only |
+| `PI_API` | Wire protocol Pi speaks to `LLM_BASE_URL`: `openai-completions` (default), `openai-responses`, `anthropic-messages`, `google-generative-ai`. Change only if your gateway isn't OpenAI-Chat-Completions-compatible. Pi only |
+| `PI_PROJECT_TRUST` | Whether Pi trusts project-local `.pi/` resources in the mounted repo: `always` (default), `never`, `ask`. Pi only |
+| `PI_OFFLINE` | Disables Pi's startup update-check and telemetry network calls (default: `1`). Set to `0` to let Pi phone home. Pi only |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
 | `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `false`). OpenCode only. Set `true` only for gateways that reject a trailing assistant message — see `proxy/README.md`. |
@@ -341,7 +410,7 @@ services:
 | `CONFLUENCE_URL` / `_USERNAME` / `_TOKEN` | Confluence access |
 | `JIRA_URL` / `_USERNAME` / `_TOKEN` | Jira access |
 | `GRAFANA_URL` / `GRAFANA_API_KEY` | Grafana access |
-| `CODEBOX_MCP_*` | Toggle individual MCP servers for Claude Code (default: `true`). Set to `false` to exclude from generated config. Servers: `MEMORY`, `CONTEXT7`, `TIME`, `WEBSEARCH`, `GITHUB_RBI`, `GITHUB_PERSONAL`, `MCP_ATLASSIAN`, `GRAFANA`, `DOCKER`, `SEQUENTIAL_THINKING`. Claude Code only |
+| `CODEBOX_MCP_*` | Toggle individual MCP servers for Claude Code (default: `true`). Set to `false` to exclude from generated config. Servers: `MEMORY`, `CONTEXT7`, `TIME`, `WEBSEARCH`, `GITHUB_RBI`, `GITHUB_PERSONAL`, `MCP_ATLASSIAN`, `GRAFANA`, `DOCKER`, `SEQUENTIAL_THINKING`. Claude Code only — Pi has no MCP support; these vars have no effect under `CODEBOX_APP=pi` |
 
 </details>
 
@@ -385,7 +454,7 @@ CODEBOX_THEME=dark
 OPENCODE_TUI_THEME=catppuccin
 ```
 
-> **Note:** `OPENCODE_TUI_THEME` only applies to OpenCode (`CODEBOX_APP=opencode`). Claude Code manages its own theme via the `/theme` command after launch.
+> **Note:** `OPENCODE_TUI_THEME` only applies to OpenCode (`CODEBOX_APP=opencode`). Claude Code manages its own theme via the `/theme` command after launch. Pi reads `CODEBOX_THEME` for its `settings.json` `theme` field instead — it has no separate TUI color-scheme variable.
 
 ## MCP Servers
 
@@ -404,7 +473,7 @@ OPENCODE_TUI_THEME=catppuccin
 
 The `playwright` and `git` MCP servers were previously listed here but are not wired into any agent config — `@playwright/mcp` was removed outright (see *Internals: Playwright* below), and `git-mcp-server` is installed in the image but registered with neither agent. For browser automation, the `agent-browser` skill is baked in, but its CLI is not: run `npm i -g agent-browser && agent-browser install` first.
 
-Enabled servers run as Node processes inside the container. Docker-based servers (github, atlassian, grafana) launch separate containers via the mounted Docker socket. For OpenCode, edit the template to enable/disable a server. For Claude Code, toggle servers via `CODEBOX_MCP_*` env vars — see [Context Window Optimization](#context-window-optimization-claude-code).
+Enabled servers run as Node processes inside the container. Docker-based servers (github, atlassian, grafana) launch separate containers via the mounted Docker socket. For OpenCode, edit the template to enable/disable a server. For Claude Code, toggle servers via `CODEBOX_MCP_*` env vars — see [Context Window Optimization](#context-window-optimization-claude-code). Pi supports no MCP servers at all, by design.
 
 ### Context Window Optimization (Claude Code)
 
@@ -564,6 +633,9 @@ Also rename:
 | Claude Code: web mode fails | Set `CODEBOX_MODE=tmux` — web mode is not supported for Claude Code |
 | Claude Code: session data lost after restart | Mount a named volume to `/root/.claude` — see [Claude Code Mode](#claude-code-mode) |
 | Claude Code: stale session data after upgrade | Run `docker volume rm <claude-code-data-volume>` then restart |
+| Pi: web mode fails | Set `CODEBOX_MODE=tmux` — web mode is not supported for Pi |
+| Pi: session data lost after restart | Mount a named volume to `/root/.pi/agent` — see [Pi Mode](#pi-mode) |
+| Pi: stale session data after upgrade | Run `docker volume rm <pi-data-volume>` then restart |
 
 ## Updating
 
@@ -593,7 +665,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` only if `PREFILL_PROXY=true` (OpenCode only; off by default).
 9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner and initialises the UI theme flag.
 10. **Mode launch** (`lib/modes.sh`) — Reads `CODEBOX_MODE` (default `web`):
-    - `web` — starts the agent in a restart loop on `0.0.0.0:${CODEBOX_PORT:-3000}` (OpenCode only; not supported for Claude Code)
+    - `web` — starts the agent in a restart loop on `0.0.0.0:${CODEBOX_PORT:-3000}` (OpenCode only; not supported for Claude Code or Pi)
     - `tui` — starts `ttyd` serving the agent TUI directly in a restart loop on the same port
     - `tmux` — creates a tmux session (`codebox`) running the TUI in a restart loop, then starts `ttyd` serving `tmux attach` on the same port. Browser opens a full xterm.js terminal with tmux; `docker exec` can also attach to the same session.
 
@@ -613,6 +685,15 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 - **Auth mapping** — Maps `LLM_API_KEY` → `ANTHROPIC_API_KEY` and `LLM_BASE_URL` → `ANTHROPIC_BASE_URL` at startup
 - **Model mapping** — Exports `CLAUDE_CODE_MODEL` → `CLAUDE_MODEL` (Claude Code's env var for default model selection)
 - **Onboarding pre-seed** — Writes `/root/.claude/.config.json` to skip the setup wizard, API key approval prompt, and workspace trust dialog
+
+**Pi-specific steps (in `lib/config.sh:_configure_pi`):**
+
+- **Config dir** — `PI_CODING_AGENT_DIR` (default `/root/.pi/agent`) is created and exported so Pi reads/writes its config there
+- **`models.json`** — Written only when `LLM_BASE_URL` is set. Declares a custom `llm` provider with `baseUrl`, `authHeader: true`, a `PI_API`-driven wire-protocol discriminator, and a models array built from `PI_MODEL`. Its `apiKey` field is the literal string `$LLM_API_KEY` — Pi expands this from the environment at runtime, so the secret never lands on disk
+- **`settings.json`** — Writes `defaultProjectTrust` (from `PI_PROJECT_TRUST`, default `always`), `theme` (from `CODEBOX_THEME`), `enableInstallTelemetry: false`, `enableAnalytics: false`, plus conditional `defaultProvider`/`defaultModel`/`defaultThinkingLevel`/`httpProxy`
+- Both files are chmod `600` and skipped if the user bind-mounts their own (same mount-detection guard `_configure_opencode` uses for `oh-my-opencode-slim.json`)
+- **No `auth.json`** is written for Pi — deliberately; Pi's docs warn against configuring a credential in both `auth.json` and `models.json` for the same provider
+- **No MCP config** — Pi has no MCP support; `CODEBOX_MCP_*` is not read in this path
 
 
 </details>
@@ -635,9 +716,9 @@ A local HTTP proxy between OpenCode and the upstream LLM API:
 
 Three stages, so build tools never reach the shipped image:
 
-- **`builder`** — `node:22-bookworm-slim` plus `build-essential` for native npm modules. Installs `opencode-ai`, `@anthropic-ai/claude-code`, the provider SDKs, `oh-my-opencode-slim`, and the bundled MCP server packages.
+- **`builder`** — `node:22-bookworm-slim` plus `build-essential` for native npm modules. Installs `opencode-ai`, `@anthropic-ai/claude-code`, `@earendil-works/pi-coding-agent` (pinned by `PI_VERSION`, `--ignore-scripts`), the provider SDKs, `oh-my-opencode-slim`, and the bundled MCP server packages.
 - **`atl-builder`** — `golang:1.26-alpine`. Compiles the RBI-internal `atl` CLI from the `atl` build context, or emits a stub when `ATL_SRC_PATH` is unset.
-- **`runtime`** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `sqlite3`, `tini` (PID 1), `tmux`, `zsh`, Docker CLI + Compose v2 plugin (so `docker compose` and `./codebox.sh` work inside the box), Bun, `python3` (for the `codemap` skill), `mkcert`, and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks — `opencode` and `claude` are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
+- **`runtime`** — `node:22-bookworm-slim` (no build tools). Adds `git`, `curl`, `jq`, `ripgrep`, `openssh-client`, `unzip`, `sqlite3`, `tini` (PID 1), `tmux`, `zsh`, Docker CLI + Compose v2 plugin (so `docker compose` and `./codebox.sh` work inside the box), Bun, `python3` (for the `codemap` skill), `mkcert`, and `ttyd` (web terminal for tui/tmux modes). Copies `node_modules` from the builder stage and re-creates bin symlinks (Pi's `pi` symlink is derived from the package's own `package.json` `bin` field) — `opencode`, `claude`, and `pi` are available at `/usr/local/bin/`. MCP servers start instantly with no registry checks.
 
 #### Build-time toggles
 
@@ -646,6 +727,7 @@ Unlike the `CODEBOX_*` runtime variables, these are Docker build args — they o
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `CODEBOX_VERSION` | `latest` | `opencode-ai` version pin |
+| `PI_VERSION` | `latest` | `@earendil-works/pi-coding-agent` version pin |
 
 Playwright used to be a build arg here. It isn't any more — see below.
 
@@ -705,7 +787,8 @@ Set it in the service, not in `.env`: `lib/env.sh` re-exports `.env` over the co
 | `/workspace` | Project source code |
 | `/root/.local/share/opencode` | OpenCode data, auth, database |
 | `/root/.claude` | Claude Code session data, settings (when `CODEBOX_APP=claude-code`) |
-| `/root/.config/opencode/memory` | MCP memory persistence (all agents) |
+| `/root/.pi/agent` | Pi session data, `models.json`, `settings.json` (when `CODEBOX_APP=pi`) |
+| `/root/.config/opencode/memory` | MCP memory persistence (OpenCode and Claude Code only — Pi has no MCP support) |
 | `/root/.ssh` | SSH keys for git (ro) |
 | `/root/.gitconfig` | Git config (ro) |
 | `/root/.gitconfig-work` | Secondary git config for work identity (ro, optional) |

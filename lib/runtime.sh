@@ -49,6 +49,43 @@ if [ "${CODEBOX_APP}" = "claude-code" ]; then
     _app_ver=$("${APP_BIN}" --version 2>/dev/null || echo "unknown")
     _print_banner "Claude Code" "claude-code v${_app_ver}"
 
+elif [ "${CODEBOX_APP}" = "pi" ]; then
+    PI_BIN=$(which pi 2>/dev/null || echo "/usr/local/bin/pi")
+    if [ -x "${PI_BIN}" ]; then
+        export APP_BIN="${PI_BIN}"
+        echo "  ✓ pi binary: ${PI_BIN}"
+    else
+        echo "  ✗ FATAL: pi binary not found"
+        echo "    Expected: /usr/local/bin/pi"
+        exit 1
+    fi
+
+    # Build extra args for Pi (--model if set, --thinking if valid).
+    # _configure_pi() also writes defaultModel/defaultThinkingLevel into
+    # settings.json; these flags are passed anyway because they still win
+    # when a user bind-mounts their own settings.json. Keep the accepted
+    # PI_THINKING set identical to the one in lib/config.sh.
+    _pi_extra=""
+    if [ -n "${PI_MODEL:-}" ]; then
+        _pi_extra="${_pi_extra} --model ${PI_MODEL}"
+        echo "  ✓ Default model: ${PI_MODEL}"
+    fi
+    if [ -n "${PI_THINKING:-}" ]; then
+        case "${PI_THINKING}" in
+            off|minimal|low|medium|high|xhigh|max)
+                _pi_extra="${_pi_extra} --thinking ${PI_THINKING}"
+                ;;
+            *)
+                echo "  ⚠ Ignoring invalid PI_THINKING='${PI_THINKING}'"
+                echo "    Valid: off, minimal, low, medium, high, xhigh, max"
+                ;;
+        esac
+    fi
+    export CODEBOX_EXTRA_ARGS="${CODEBOX_EXTRA_ARGS:+${CODEBOX_EXTRA_ARGS} }${_pi_extra}"
+
+    _app_ver=$("${APP_BIN}" --version 2>/dev/null || echo "unknown")
+    _print_banner "Pi" "pi v${_app_ver}"
+
 else
     # OpenCode binary (default)
     OPENCODE_STABLE_BIN="/usr/local/bin/opencode-go"

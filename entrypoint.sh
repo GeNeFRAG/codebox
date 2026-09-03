@@ -26,12 +26,19 @@ _ts() { date '+%H:%M:%S'; }
 # CODEBOX_APP selects which coding agent to run:
 #   opencode    (default) — OpenCode AI agent
 #   claude-code           — Anthropic Claude Code agent
+#   pi                    — Pi coding agent (pi.dev)
 CODEBOX_APP="${CODEBOX_APP:-opencode}"
-if [ "${CODEBOX_APP}" = "claude-code" ]; then
-    APP_TITLE_PREFIX="Claude Code"
-else
-    APP_TITLE_PREFIX="OpenCode"
-fi
+case "${CODEBOX_APP}" in
+    claude-code)
+        APP_TITLE_PREFIX="Claude Code"
+        ;;
+    pi)
+        APP_TITLE_PREFIX="Pi"
+        ;;
+    opencode|*)
+        APP_TITLE_PREFIX="OpenCode"
+        ;;
+esac
 
 # ─── 3. Resolve CA_CERT_PATH to the real host path ─────────────────
 # Compose mounts CA_CERT_PATH → /certs/ca-bundle.pem inside this container,
@@ -72,14 +79,21 @@ echo "── $(_ts) config"
 # shellcheck source=lib/config.sh
 . "${LIB}/config.sh"
 
-if [ "${CODEBOX_APP}" = "claude-code" ]; then
-    echo "→ Configuring Claude Code..."
-    export PREFILL_PROXY_ENABLED=false
-    _generate_claude_code_config
-
-else
-    _configure_opencode
-fi
+case "${CODEBOX_APP}" in
+    claude-code)
+        echo "→ Configuring Claude Code..."
+        export PREFILL_PROXY_ENABLED=false
+        _generate_claude_code_config
+        ;;
+    pi)
+        echo "→ Configuring Pi..."
+        export PREFILL_PROXY_ENABLED=false
+        _configure_pi
+        ;;
+    *)
+        _configure_opencode
+        ;;
+esac
 _generate_atl_config
 
 # ─── 6. Corporate CA certificate ───────────────────────────────────
