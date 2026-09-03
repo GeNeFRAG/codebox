@@ -18,7 +18,6 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `templates/opencode.json.template` | OpenCode config — MCP servers, permissions, provider endpoints |
 | `templates/claude-code.mcp.json.template` | Nothing at runtime — reference manifest that `scripts/verify-mcp-sync.sh` diffs against `templates/mcp-servers/` and `opencode.json.template` |
 | `templates/mcp-servers/*.json` | Individual MCP server definitions, assembled at runtime into `/root/.claude/claude-code-mcp.json`; gated by `CODEBOX_MCP_*` env vars |
-| `lib/context.sh` | Context window optimization — prunes BMad skills and GSD system from `/workspace/.claude/` at startup, restores on shutdown (Claude Code only) |
 | `lib/playwright.sh` | On-demand Playwright browser download at startup, gated by `CODEBOX_PLAYWRIGHT` (not baked into the image) |
 | `lib/docker-guard.sh` | Installs the `docker` guard shim on `PATH` (and in `/root/.{bashrc,zshrc}`), resolves `CODEBOX_COMPOSE_PROJECT`, writes the `/run/codebox-container` marker |
 | `lib/guard-bin/docker` | `PATH` shim in front of `/usr/local/bin/docker` — refuses commands that would stop/remove/recreate this container or its Compose siblings |
@@ -63,8 +62,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 7. **TLS cert for ttyd** — `lib/tls.sh`: generates a self-signed cert for the ttyd web terminal (tui/tmux modes only).
 8. **OpenCode plugins** — `lib/plugins.sh`: skips `npm install` when the baked `.deps-fingerprint` still matches `package.json`; re-runs only if the fingerprint is stale or `node_modules` was wiped (OpenCode only).
 9. **System checks** — `lib/system-checks.sh`: Docker socket check, `git safe.directory`, workspace symlink, git credential validation.
-9b. **Context optimization** — `lib/context.sh:_optimize_claude_code_context`: if `CODEBOX_SKILLS_BMAD=false` or `CODEBOX_GSD=false`, backs up and removes unused skill/agent files from `/workspace/.claude/`. Restored by `_restore_claude_context()` on graceful shutdown (Claude Code only).
-9c. **Playwright browsers** — `lib/playwright.sh:_install_playwright`: if `CODEBOX_PLAYWRIGHT` is `true` or `shell`, runs `playwright install` into the per-service volume at `/root/.cache/ms-playwright`. No-ops in ~0.4s once populated; backgrounds the first-run download so the healthcheck's 15s `start_period` isn't at risk.
+9b. **Playwright browsers** — `lib/playwright.sh:_install_playwright`: if `CODEBOX_PLAYWRIGHT` is `true` or `shell`, runs `playwright install` into the per-service volume at `/root/.cache/ms-playwright`. No-ops in ~0.4s once populated; backgrounds the first-run download so the healthcheck's 15s `start_period` isn't at risk.
 10. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `PREFILL_PROXY=true` only; **default off** since the gateway now accepts assistant prefill — see `proxy/README.md`).
 11. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, sets theme and browser tab title. Does **not** prime the model cache — OpenCode refreshes that itself on boot and hourly.
 12. **Mode launch** — `lib/modes.sh`: enters the `web`/`tui`/`tmux` restart loop for the chosen `CODEBOX_MODE`. **Does not return.**

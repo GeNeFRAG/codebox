@@ -62,7 +62,6 @@ _install_docker_guard
 # shellcheck source=lib/proxy.sh
 . "${LIB}/proxy.sh"
 _cleanup() {
-    _restore_claude_context 2>/dev/null
     [ -n "${PROXY_PID:-}" ] && kill "${PROXY_PID}" 2>/dev/null
     exit 0
 }
@@ -101,14 +100,7 @@ echo "── $(_ts) system-checks"
 # shellcheck source=lib/system-checks.sh
 . "${LIB}/system-checks.sh"
 
-# ─── 9b. Context optimization (Claude Code only) ──────────────────
-# shellcheck source=lib/context.sh
-. "${LIB}/context.sh"
-if [ "${CODEBOX_APP}" = "claude-code" ]; then
-    _optimize_claude_code_context
-fi
-
-# ─── 9c. Playwright browsers (opt-in, per container) ──────────────
+# ─── 9b. Playwright browsers (opt-in, per container) ──────────────
 echo "── $(_ts) playwright"
 # shellcheck source=lib/playwright.sh
 . "${LIB}/playwright.sh"

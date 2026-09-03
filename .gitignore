@@ -23,7 +23,6 @@ opencode-docker/
 # OS
 .DS_Store
 
-_bmad*
 .opencode
 logs
 .vscode

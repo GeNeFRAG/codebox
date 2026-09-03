@@ -342,8 +342,6 @@ services:
 | `JIRA_URL` / `_USERNAME` / `_TOKEN` | Jira access |
 | `GRAFANA_URL` / `GRAFANA_API_KEY` | Grafana access |
 | `CODEBOX_MCP_*` | Toggle individual MCP servers for Claude Code (default: `true`). Set to `false` to exclude from generated config. Servers: `MEMORY`, `CONTEXT7`, `TIME`, `WEBSEARCH`, `GITHUB_RBI`, `GITHUB_PERSONAL`, `MCP_ATLASSIAN`, `GRAFANA`, `DOCKER`, `SEQUENTIAL_THINKING`. Claude Code only |
-| `CODEBOX_SKILLS_BMAD` | Enable/disable BMad skills (default: `true`). Saves ~300K tokens when disabled. Claude Code only |
-| `CODEBOX_GSD` | Enable/disable GSD system (default: `true`). Saves ~260K tokens when disabled. Claude Code only |
 
 </details>
 
@@ -424,10 +422,8 @@ Each MCP server adds 50–150 tool definitions to Claude Code's system prompt. D
 | `CODEBOX_MCP_GRAFANA` | `true` | Grafana dashboards |
 | `CODEBOX_MCP_DOCKER` | `true` | Docker management |
 | `CODEBOX_MCP_SEQUENTIAL_THINKING` | `true` | Multi-step reasoning |
-| `CODEBOX_SKILLS_BMAD` | `true` | BMad skills (~300K tokens) |
-| `CODEBOX_GSD` | `true` | GSD system (~260K tokens) |
 
-Set any variable to `false` in `.env` to disable it. Disabled files are backed up at startup and restored on graceful shutdown. If the container is hard-killed, restore with `git checkout -- .claude/`.
+Set any variable to `false` in `.env` to disable it.
 
 <details>
 <summary><strong>Plugin: oh-my-opencode-slim</strong></summary>
@@ -594,7 +590,6 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 5. **CA certificate install** (`lib/ca-cert.sh`) — If `/certs/ca-bundle.pem` is mounted and non-empty, installs into system store + sets `NODE_EXTRA_CA_CERTS`.
 6. **Plugin install** (`lib/plugins.sh`) — Runs `npm install` in config dir if `package.json` exists (OpenCode only).
 7. **System checks** (`lib/system-checks.sh`) — Verifies Docker socket for MCP containers; marks `/workspace` as git safe.directory; validates `.git-credentials` and `.gitconfig-work` mounts; symlinks `/workspace` into `$HOME`.
-7b. **Context optimization** (`lib/context.sh`) — If `CODEBOX_SKILLS_BMAD=false` or `CODEBOX_GSD=false`, removes unused skill/agent files from `/workspace/.claude/` to reduce system prompt size. Files are backed up and restored on graceful shutdown (Claude Code only).
 8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` only if `PREFILL_PROXY=true` (OpenCode only; off by default).
 9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner and initialises the UI theme flag.
 10. **Mode launch** (`lib/modes.sh`) — Reads `CODEBOX_MODE` (default `web`):
@@ -742,7 +737,6 @@ Set it in the service, not in `.env`: `lib/env.sh` re-exports `.env` over the co
 │   ├── plugins.sh                      # OpenCode plugin (npm) installation
 │   ├── system-checks.sh               # Docker socket, git safe.directory, workspace symlink
 │   ├── proxy.sh                        # Prefill proxy start/stop (OpenCode only)
-│   ├── context.sh                      # Context window optimization (Claude Code only)
 │   ├── runtime.sh                      # Binary resolution, banner, theme, title, mode guard
 │   └── modes.sh                        # Mode launch: web / tui / tmux
 ├── templates/
