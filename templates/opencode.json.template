@@ -119,6 +119,18 @@
   },
   "model": "${OPENCODE_MODEL}",
   "small_model": "${OPENCODE_SMALL_MODEL}",
+  "autoupdate": false,
+  "share": "disabled",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "preserve_recent_tokens": 12000,
+    "reserved": 2000
+  },
+  "tool_output": {
+    "max_lines": 1500,
+    "max_bytes": 40000
+  },
   "permission": {
     "*": "ask",
     "read": {
@@ -138,7 +150,7 @@
     "task": "allow",
     "question": "allow",
     "todowrite": "allow",
-    "webfetch": "ask",
+    "webfetch": "allow",
     "websearch": "allow",
     "bash": {
       "*": "ask",
