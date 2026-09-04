@@ -15,8 +15,10 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `lib/proxy.sh` | Prefill proxy start/stop helpers (OpenCode only) |
 | `lib/runtime.sh` | Binary resolution (`APP_BIN`), startup banner, theme initialization, browser tab title derivation |
 | `lib/modes.sh` | Mode launch: `web` / `tui` / `tmux` restart loops |
-| `templates/opencode.json.template` | OpenCode config — MCP servers, permissions, provider endpoints |
+| `templates/opencode.json.template` | OpenCode config — MCP servers, permissions, provider endpoints. Its `provider.llm.models` block is only a readable **snapshot**: `lib/config.sh` overwrites it from `templates/model-catalog.json` on every boot |
+| `templates/model-catalog.json` | **Single source of truth** for gateway model limits/pricing/protocol. Limits/pricing are injected into *both* opencode (`.provider.llm.models`) and Pi (`~/.pi/agent/models.json`); the routing fields (`api`, `thinkingLevelMap`, `compat`) are **Pi-only** — opencode has no equivalent. Pins Claude models to `anthropic-messages` and marks `max` thinking unsupported on Azure GPT-5.x. Verify with `scripts/verify-model-catalog.sh` |
 | `templates/claude-code.mcp.json.template` | Nothing at runtime — reference manifest that `scripts/verify-mcp-sync.sh` diffs against `templates/mcp-servers/` and `opencode.json.template` |
+| `scripts/verify-model-catalog.sh` | Validates `model-catalog.json`, diffs it against the `opencode.json.template` snapshot, asserts the Claude→`anthropic-messages` invariant, and (when `LLM_BASE_URL`/`LLM_API_KEY` are set) cross-checks every model ID and limit against the live gateway |
 | `templates/mcp-servers/*.json` | Individual MCP server definitions, assembled at runtime into `/root/.claude/claude-code-mcp.json`; gated by `CODEBOX_MCP_*` env vars |
 | `lib/playwright.sh` | On-demand Playwright browser download at startup, gated by `CODEBOX_PLAYWRIGHT` (not baked into the image) |
 | `skills/*/SKILL.md` | Agent skills baked to `/root/.agents/skills/`; Pi's replacement for MCP servers (it has no MCP client) — currently `atl` (Jira/Confluence/Zephyr). Mounted **one line per skill** in the dev block, never as a whole directory: `/root/.agents/skills/` also holds `agent-browser` and `simplify` from `npx skills add`, which a directory mount would shadow away |
@@ -108,6 +110,28 @@ Steps to wire a new server into all three agents:
 6. Apply: `./codebox.sh restart codebox` (templates are bind-mounted; no rebuild needed).
 
 > To add a server for **only one agent**, edit only that agent's template.
+
+## Recipe: Add or Change a Model
+
+Model limits, pricing and wire protocol live in **one** file: `templates/model-catalog.json`. Never hardcode them in `lib/config.sh` or edit `provider.llm.models` in `opencode.json.template` by hand — the latter is a snapshot that `_generate_config()` overwrites from the catalog on every boot.
+
+1. Add or edit the entry in `templates/model-catalog.json` (`id`, `name`, `context`, `output`, `reasoning`, `vision`, `cost`, optional `api` / `thinkingLevelMap`).
+2. Validate: `./scripts/verify-model-catalog.sh`. With `LLM_BASE_URL`/`LLM_API_KEY` exported it also cross-checks every ID and limit against the live gateway — this is how the phantom `gpt-5.1` entry was caught.
+3. Re-sync the `opencode.json.template` snapshot if the verify script reports drift.
+4. Apply: `./codebox.sh restart <svc>`.
+
+### Gateway quirks the catalog exists to encode
+
+The gateway is LiteLLM fronting Bedrock (Claude) and Azure (GPT). All four apply to **Pi only** (opencode consumes just limits/pricing from the catalog). The middle two **fail open** — HTTP 200 or no message at all, silently degraded output — which is why they are pinned in data and asserted by the verify script:
+
+| Quirk | Consequence if unpinned | Fix in catalog |
+|---|---|---|
+| Claude on `openai-completions` gets `reasoning_effort` translated into `thinking.budget_tokens` | Thinking *does* stream back, but with the placeholder signature `"reasoning_content"` instead of a replayable one, and `usage.reasoning: 0` so thinking tokens are never accounted; and any request whose `max_tokens` ≤ the derived budget is rejected (HTTP 400, `max_tokens must be greater than thinking.budget_tokens`) — a trap that grows with `PI_THINKING_BUDGETS` | `"api": "anthropic-messages"` per Claude model |
+| Pi only auto-enables Anthropic `cache_control` for `openrouter.ai` URLs | Prompt caching completely off; full prefix re-billed at input rate (10× `cache_read` on Opus) | `api: anthropic-messages` handles it natively; otherwise `compat.cacheControlFormat: "anthropic"` |
+| Pi's `models.json` schema requires `cost.cacheWrite` | File rejected and the **whole provider silently dropped** — no models listed | `_pi_models_from_catalog()` defaults it to `0` |
+| Azure GPT-5.x rejects `reasoning_effort: max` with HTTP 400 | Hard request failure at `--thinking max` | `thinkingLevelMap.max: null` → pi clamps to `xhigh` |
+
+Measured on this gateway (`claude-haiku-4-5`, `gpt-5-nano`): `xhigh` is accepted by Azure and `max` is not; the `/v1/messages` route returns real signatures plus `usage.reasoning`, and prompt caching over it works once the cached prefix clears Bedrock's minimum (`cacheWrite` on the first call, `cacheRead` on the next). Below that minimum both stay `0` — that is the prefix being too small, not caching being off.
 
 ## Recipe: Add an Agent Role (OpenCode only)
 

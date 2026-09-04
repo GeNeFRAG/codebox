@@ -9,6 +9,10 @@ CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 # Pi's default config dir (relocatable via PI_CODING_AGENT_DIR); matches
 # the mkdir already done for it in the Dockerfile.
 PI_CONFIG_DIR="/root/.pi/agent"
+# Shared model catalog (context/output limits, pricing, per-model api).
+# Single source of truth for BOTH agents — see _pi_models_from_catalog()
+# and _opencode_models_from_catalog().
+MODEL_CATALOG="/opt/opencode/templates/model-catalog.json"
 
 _ENVSUBST_VARS_MCP='${CA_CERT_PATH} ${GITHUB_ENTERPRISE_TOKEN} ${GITHUB_ENTERPRISE_URL} ${GITHUB_PERSONAL_TOKEN} ${CONFLUENCE_URL} ${CONFLUENCE_USERNAME} ${CONFLUENCE_TOKEN} ${JIRA_URL} ${JIRA_USERNAME} ${JIRA_TOKEN} ${GRAFANA_URL} ${GRAFANA_API_KEY} ${ATLASSIAN_TOOLSETS}'
 _ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE_URL} ${LLM_API_KEY} ${OPENROUTER_API_KEY} ${OPENCODE_MODEL} ${OPENCODE_SMALL_MODEL}'
@@ -20,6 +24,79 @@ _ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE
 # templates/opencode.json.template — see scripts/verify-mcp-sync.sh.
 _MCP_ALL_SERVERS="memory context7 time websearch github_rbi github_personal mcp-atlassian grafana docker sequential-thinking"
 
+# ─── Model catalog → per-agent model config ─────────────────────────
+# The gateway is LiteLLM in front of Bedrock/Azure. Two things matter and
+# neither is auto-detectable by the agents, so they are pinned here:
+#
+#   1. api — Claude models must go over anthropic-messages. The
+#      OpenAI-completions route does produce thinking (LiteLLM maps
+#      `reasoning_effort` onto Anthropic's `thinking.budget_tokens`), but
+#      it degrades in three measured ways:
+#        - the thinking block comes back with the placeholder signature
+#          "reasoning_content" instead of a real, replayable signature;
+#        - `usage.reasoning` is 0, so thinking tokens go unaccounted and
+#          cost reporting understates the turn;
+#        - because effort is translated into a token budget, a request
+#          whose max_tokens is <= that budget is rejected outright
+#          (HTTP 400, "max_tokens must be greater than
+#          thinking.budget_tokens") — a trap that scales with
+#          PI_THINKING_BUDGETS.
+#      The anthropic-messages route returns real signatures, accounts
+#      reasoning tokens, and has no max_tokens/budget interaction. The
+#      catalog pins api per model, so Claude and GPT models coexist under
+#      one provider block.
+#
+#   2. cacheControlFormat — pi only auto-enables Anthropic-style
+#      `cache_control` markers for openrouter.ai base URLs, so against
+#      this gateway nothing was ever marked and every turn re-billed the
+#      full prefix at input rate (10x the cache_read rate on Opus).
+#      Set explicitly for any Claude model left on an OpenAI route.
+#
+# NOTE: only pi consumes `api`/`thinkingLevelMap`/`compat`. The opencode
+# renderer below emits name/cost/limit only, so the Claude routing fix is
+# pi-only; opencode still talks to every model over its provider's SDK.
+_pi_models_from_catalog() {
+    command -v jq &>/dev/null || return 1
+    jq -e '
+        [ .models[] | {
+            id,
+            # pi matches --model patterns against `name`, and displays
+            # entries by `id`; keeping them identical means the ids in
+            # PI_MODEL/--model are the only string a user ever needs.
+            # (opencode gets the human-readable .name instead.)
+            name: .id,
+            contextWindow: .context,
+            maxTokens: .output,
+            reasoning: .reasoning,
+            input: (if .vision then ["text","image"] else ["text"] end),
+            # cacheWrite is REQUIRED by the models.json schema in pi; if it
+            # is missing the file is invalid and pi silently drops the whole
+            # provider. OpenAI-style caching has no write surcharge, hence 0.
+            cost: (.cost + {cacheWrite: (.cost.cacheWrite // 0)})
+          }
+          + (if .api then {api: .api} else {} end)
+          + (if .thinkingLevelMap then {thinkingLevelMap: .thinkingLevelMap} else {} end)
+          + (if (.id | startswith("claude-")) and (.api != "anthropic-messages")
+             then {compat: {cacheControlFormat: "anthropic"}} else {} end)
+        ]' "${MODEL_CATALOG}" 2>/dev/null
+}
+
+# Renders the catalog into opencode's .provider.llm.models shape so the
+# limits/pricing live in exactly one file for both agents.
+_opencode_models_from_catalog() {
+    command -v jq &>/dev/null || return 1
+    jq -e '
+        [ .models[] | {
+            key: .id,
+            value: {
+                name: .name,
+                cost: ({input: .cost.input, output: .cost.output, cache_read: .cost.cacheRead}
+                       + (if .cost.cacheWrite then {cache_write: .cost.cacheWrite} else {} end)),
+                limit: {context: .context, output: .output}
+            }
+          } ] | from_entries' "${MODEL_CATALOG}" 2>/dev/null
+}
+
 # ─── Reusable config generation (called on startup + proxy fallback) ─
 _generate_config() {
     envsubst "${_ENVSUBST_VARS_OPENCODE}" < "${TEMPLATE}" > "${CONFIG_FILE}"
@@ -27,6 +104,27 @@ _generate_config() {
     if [ ! -s "${CONFIG_FILE}" ]; then
         echo "  ✗ FATAL: Config generation failed (${CONFIG_FILE} is empty)"
         exit 1
+    fi
+
+    # ─── Inject the shared model catalog ───────────────────────────────
+    # templates/opencode.json.template carries a catalog snapshot so the
+    # file stays valid/readable standalone, but model-catalog.json is
+    # authoritative: overwrite .provider.llm.models from it on every boot
+    # so opencode and pi can never disagree about limits or pricing.
+    if [ -s "${MODEL_CATALOG}" ] && command -v jq &>/dev/null; then
+        local _oc_models
+        if _oc_models=$(_opencode_models_from_catalog); then
+            if jq --argjson m "${_oc_models}" '.provider.llm.models = $m' \
+                   "${CONFIG_FILE}" > "${CONFIG_FILE}.tmp" 2>/dev/null \
+                   && [ -s "${CONFIG_FILE}.tmp" ]; then
+                mv "${CONFIG_FILE}.tmp" "${CONFIG_FILE}"
+                chmod 600 "${CONFIG_FILE}"
+                echo "  ✓ Model catalog: $(jq 'length' <<<"${_oc_models}") models from $(basename "${MODEL_CATALOG}")"
+            else
+                rm -f "${CONFIG_FILE}.tmp"
+                echo "  ⚠ Model catalog injection failed — using template snapshot"
+            fi
+        fi
     fi
 
     # ─── Gate .mcp[<server>].enabled via CODEBOX_MCP_<NAME> ────────────
@@ -371,6 +469,8 @@ _configure_pi() {
         if grep -qE " ${models_file}( |$)" /proc/self/mountinfo 2>/dev/null; then
             echo "  → models.json is bind-mounted — leaving user config in place"
         else
+            # PI_API is the *provider-level* default, used for models that
+            # don't pin their own "api" in the catalog (i.e. the GPT family).
             local _pi_api="${PI_API:-openai-completions}"
             case "${_pi_api}" in
                 openai-completions|openai-responses|anthropic-messages|google-generative-ai) ;;
@@ -381,15 +481,34 @@ _configure_pi() {
                     ;;
             esac
 
-            local _models_json="[]"
-            if [ -n "${PI_MODEL:-}" ]; then
+            # Never assign straight into _models_json from a command that
+            # can fail: an empty value reaches `jq --argjson` as invalid
+            # JSON, jq exits 2, and the redirect below has already
+            # truncated models_file — leaving a 0-byte file behind a
+            # "✓ written" line. Stage in a scratch var and keep [] as the
+            # floor instead.
+            local _models_json="[]" _catalog_models=""
+            if [ -s "${MODEL_CATALOG}" ] && _catalog_models=$(_pi_models_from_catalog) \
+               && [ -n "${_catalog_models}" ]; then
+                _models_json="${_catalog_models}"
+                echo "  ✓ Model catalog: $(jq 'length' <<<"${_models_json}") models from $(basename "${MODEL_CATALOG}")"
+            elif [ -n "${PI_MODEL:-}" ]; then
+                # Catalog missing/unreadable — fall back to a single entry so
+                # Pi still boots. Limits must stay explicit: pi's own
+                # defaults are 128K context / 16K output, and the 16K output
+                # cap would silently truncate long replies.
+                echo "  ⚠ Model catalog unavailable — declaring only ${PI_MODEL} with assumed limits"
                 _models_json=$(jq -n --arg id "${PI_MODEL}" \
-                    '[{id: $id, name: $id, reasoning: true, input: ["text","image"], contextWindow: 200000}]')
+                    '[{id: $id, name: $id, reasoning: true, input: ["text","image"],
+                       contextWindow: 200000, maxTokens: 64000}]') || _models_json="[]"
             else
-                echo "  ⚠ PI_MODEL not set — no model declared; pick one interactively via /model"
+                echo "  ⚠ No model catalog and PI_MODEL unset — pick a model via /model"
             fi
 
-            jq -n --arg baseUrl "${LLM_BASE_URL}" --arg api "${_pi_api}" \
+            # Write via temp file: a failed jq must not leave a truncated
+            # models.json behind, and must not claim defaultProvider=llm in
+            # settings.json for a provider that never got written.
+            if jq -n --arg baseUrl "${LLM_BASE_URL}" --arg api "${_pi_api}" \
                 --arg apiKey '$LLM_API_KEY' --argjson models "${_models_json}" '{
                 providers: {
                     llm: {
@@ -400,10 +519,16 @@ _configure_pi() {
                         models: $models
                     }
                 }
-            }' > "${models_file}"
-            chmod 600 "${models_file}"
-            echo "  ✓ models.json written (${LLM_BASE_URL}, api=${_pi_api})"
-            _models_written="true"
+            }' > "${models_file}.tmp" && [ -s "${models_file}.tmp" ]; then
+                mv "${models_file}.tmp" "${models_file}"
+                chmod 600 "${models_file}"
+                echo "  ✓ models.json written (${LLM_BASE_URL}, default api=${_pi_api})"
+                _models_written="true"
+            else
+                rm -f "${models_file}.tmp"
+                echo "  ✗ models.json generation FAILED — leaving previous file untouched"
+                echo "    Pi will fall back to its built-in providers; check ${MODEL_CATALOG}"
+            fi
         fi
     else
         echo "  → models.json skipped (LLM_BASE_URL not set)"
@@ -444,6 +569,27 @@ _configure_pi() {
 
         local _pi_proxy="${HTTPS_PROXY:-${HTTP_PROXY:-}}"
 
+        # Thinking budgets. Pi's defaults stop at high=16384, sized for
+        # 16K-output models; the catalog's Claude entries allow 64–128K
+        # output, so raise them and give xhigh/max real headroom. Only
+        # consumed by APIs with native token budgets (anthropic-messages
+        # here) — the OpenAI route sends reasoning_effort and ignores these.
+        local _pi_budgets='{"minimal":1024,"low":4096,"medium":16384,"high":32768,"xhigh":49152,"max":65536}'
+        if [ -n "${PI_THINKING_BUDGETS:-}" ]; then
+            if jq -e . <<<"${PI_THINKING_BUDGETS}" &>/dev/null; then
+                _pi_budgets="${PI_THINKING_BUDGETS}"
+                echo "  ✓ Using PI_THINKING_BUDGETS override"
+            else
+                echo "  ⚠ PI_THINKING_BUDGETS is not valid JSON — using defaults"
+            fi
+        fi
+
+        # Reserve enough context for a full-length reply plus thinking.
+        # Pi's 16384 default is smaller than the max output of every model
+        # in the catalog, so a long answer could be cut off by compaction
+        # firing too late.
+        local _pi_reserve="${PI_COMPACTION_RESERVE:-32768}"
+
         jq -n \
             --arg trust "${_pi_trust}" \
             --arg theme "${_pi_theme}" \
@@ -451,12 +597,17 @@ _configure_pi() {
             --arg model "${PI_MODEL:-}" \
             --arg thinking "${_pi_thinking}" \
             --arg proxy "${_pi_proxy}" \
+            --argjson budgets "${_pi_budgets}" \
+            --argjson reserve "${_pi_reserve}" \
             --argjson models_written "${_models_written}" '
             {
                 defaultProjectTrust: $trust,
                 theme: $theme,
                 enableInstallTelemetry: false,
-                enableAnalytics: false
+                enableAnalytics: false,
+                thinkingBudgets: $budgets,
+                compaction: {enabled: true, reserveTokens: $reserve},
+                showCacheMissNotices: true
             }
             + (if $models_written then {defaultProvider: $provider} else {} end)
             + (if $model != "" then {defaultModel: $model} else {} end)
