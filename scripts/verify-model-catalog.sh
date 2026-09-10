@@ -20,8 +20,10 @@
 #      escape hatch, else prompt caching is silently off.
 #   5. Claude models disable eager tool-input streaming because this
 #      LiteLLM gateway rejects tools[].eager_input_streaming.
-#   6. Optional: with LLM_BASE_URL + LLM_API_KEY set, cross-check every
-#      catalog id, context window and output cap against the live gateway.
+#   6. Optional: with LLM_BASE_URL + LLM_API_KEY set, verify every catalog
+#      model ID is offered by the live gateway. Gateway token limits are
+#      advisory because provider contracts may intentionally differ; compare
+#      them only with VERIFY_LIVE_GATEWAY_LIMITS=true.
 #
 # Exit 0 = catalog consistent; Exit 1 = problem found.
 
@@ -93,7 +95,9 @@ missing_eager_compat=$(jq -r '.models[]
     | .id' "${CATALOG}")
 [ -n "${missing_eager_compat}" ] && fail "Claude models must set compat.supportsEagerToolInputStreaming=false (gateway rejects tools[].eager_input_streaming):"$'\n'"${missing_eager_compat}"
 
-# ─── 6. Optional live gateway cross-check ───────────────────────────
+# ─── 6. Optional live gateway model-ID check ────────────────────────
+# Discovery metadata may differ from contracted provider limits (for example,
+# Bedrock-backed models), so the catalog remains authoritative by default.
 if [ -n "${LLM_BASE_URL:-}" ] && [ -n "${LLM_API_KEY:-}" ]; then
     live=$(curl -sf --max-time 15 -H "Authorization: Bearer ${LLM_API_KEY}" \
            "${LLM_BASE_URL}/v1/models" 2>/dev/null)
@@ -104,19 +108,25 @@ if [ -n "${LLM_BASE_URL:-}" ] && [ -n "${LLM_API_KEY:-}" ]; then
                 fail "catalog model not offered by gateway: ${id}"
                 continue
             fi
-            l_ctx=$(jq -r '.max_input_tokens // empty' <<<"${entry}")
-            l_out=$(jq -r '.max_output_tokens // empty' <<<"${entry}")
-            [ -n "${l_ctx}" ] && [ "${l_ctx}" != "${ctx}" ] && \
-                fail "${id}: context ${ctx} in catalog, gateway reports ${l_ctx}"
-            [ -n "${l_out}" ] && [ "${l_out}" != "${out}" ] && \
-                fail "${id}: max output ${out} in catalog, gateway reports ${l_out}"
+            if [ "${VERIFY_LIVE_GATEWAY_LIMITS:-false}" = "true" ]; then
+                l_ctx=$(jq -r '.max_input_tokens // empty' <<<"${entry}")
+                l_out=$(jq -r '.max_output_tokens // empty' <<<"${entry}")
+                [ -n "${l_ctx}" ] && [ "${l_ctx}" != "${ctx}" ] && \
+                    fail "${id}: context ${ctx} in catalog, gateway reports ${l_ctx}"
+                [ -n "${l_out}" ] && [ "${l_out}" != "${out}" ] && \
+                    fail "${id}: max output ${out} in catalog, gateway reports ${l_out}"
+            fi
         done < <(jq -r '.models[] | "\(.id)\t\(.context)\t\(.output)"' "${CATALOG}")
-        echo "  → cross-checked against ${LLM_BASE_URL}"
+        if [ "${VERIFY_LIVE_GATEWAY_LIMITS:-false}" = "true" ]; then
+            echo "  → verified model IDs and advertised limits against ${LLM_BASE_URL}"
+        else
+            echo "  → verified model IDs against ${LLM_BASE_URL}; skipped advisory limits (set VERIFY_LIVE_GATEWAY_LIMITS=true to compare)"
+        fi
     else
-        echo "  → gateway unreachable; skipped live cross-check"
+        echo "  → gateway unreachable; skipped live model-ID check"
     fi
 else
-    echo "  → LLM_BASE_URL/LLM_API_KEY unset; skipped live cross-check"
+    echo "  → LLM_BASE_URL/LLM_API_KEY unset; skipped live model-ID check"
 fi
 
 if [ "${errors}" -eq 0 ]; then
