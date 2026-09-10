@@ -30,7 +30,62 @@ command -v node >/dev/null || fail "node not on PATH"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
-# ─── 1. Guard: what must and must not be blocked ────────────────────
+# ─── 1. Subagents: load + child-process recursion guard ─────────────
+echo "→ subagent/index.ts"
+
+cat > "${WORK}/subagent.mjs" <<EOF
+import { createJiti } from "${JITI}";
+
+const jiti = createJiti(import.meta.url, { moduleCache: false });
+const factory = await jiti.import("${EXT_DIR}/subagent/index.ts", { default: true });
+let fails = 0;
+const assert = (ok, label) => { if (!ok) { fails++; console.log(\`  ✗ \${label}\`); } };
+
+// The parent must expose exactly the delegation tool.
+delete process.env.CODEBOX_PI_SUBAGENT_CHILD;
+const parentTools = new Map();
+factory({ registerTool: (tool) => parentTools.set(tool.name, tool) });
+const tool = parentTools.get("subagent");
+assert(parentTools.size === 1, "parent did not register exactly one subagent tool");
+assert(Boolean(tool), "parent did not register subagent");
+assert(tool?.parameters?.properties?.agent, "subagent has no single-agent parameters");
+assert(tool?.parameters?.properties?.tasks, "subagent has no parallel parameters");
+assert(tool?.parameters?.properties?.chain, "subagent has no chain parameters");
+
+// A child inherits settings.json, but must not gain a recursive dispatcher.
+process.env.CODEBOX_PI_SUBAGENT_CHILD = "1";
+const childTools = new Map();
+factory({ registerTool: (tool) => childTools.set(tool.name, tool) });
+assert(childTools.size === 0, "delegated child registered subagent recursively");
+delete process.env.CODEBOX_PI_SUBAGENT_CHILD;
+
+console.log(\`  ✓ subagent tool loaded; child recursion blocked\`);
+process.exit(fails ? 1 : 0);
+EOF
+
+subagent_out="${WORK}/subagent.out"
+node "${WORK}/subagent.mjs" > "${subagent_out}" 2>&1; subagent_rc=$?
+cat "${subagent_out}"
+[ "${subagent_rc}" -eq 0 ] || fail "subagent extension failed to load or recursion guard failed"
+
+# Default definitions are templates copied once into the persistent Pi volume.
+# Verify the catalog models and workflow files exist, rather than silently
+# starting Pi with agents whose model ids cannot be selected.
+for f in scout planner reviewer worker; do
+    path="${REPO}/templates/pi-subagents/agents/${f}.md"
+    [ -s "${path}" ] || fail "missing Pi subagent definition: ${path}"
+    model="$(awk -F': *' '/^model:/{print $2; exit}' "${path}")"
+    jq -e --arg id "${model}" '.models[] | select(.id == $id)' \
+        "${REPO}/templates/model-catalog.json" >/dev/null \
+        || fail "Pi subagent ${f} references model absent from model-catalog.json: ${model:-<none>}"
+done
+for f in implement scout-and-plan implement-and-review; do
+    [ -s "${REPO}/templates/pi-subagents/prompts/${f}.md" ] \
+        || fail "missing Pi subagent workflow: ${f}"
+done
+echo "  ✓ model-pinned defaults and workflows valid"
+
+# ─── 2. Guard: what must and must not be blocked ────────────────────
 echo "→ codebox-guard.ts"
 
 DOCKER_CASES=1
@@ -149,10 +204,10 @@ if [ "${DOCKER_CASES}" -eq 1 ]; then
     esac
 fi
 
-# ─── 2. MCP bridge: assemble, discover, call ────────────────────────
+# ─── 3. MCP bridge: assemble, discover, call ────────────────────────
 if [ "${SKIP_MCP:-0}" = "1" ]; then
     echo "→ codebox-mcp.ts (skipped: SKIP_MCP=1)"
-    echo "✓ Pi extensions verified (guard only)"
+    echo "✓ Pi extensions verified (subagent + guard only)"
     exit 0
 fi
 

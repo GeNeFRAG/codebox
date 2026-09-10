@@ -444,9 +444,9 @@ _configure_opencode() {
 }
 
 # ─── Pi extension wiring ────────────────────────────────────────────
-# Pi has no MCP client and no permission gates of its own; both are
-# supplied as extensions from lib/pi-ext/. They live under lib/ rather
-# than in a directory of their own so they inherit the existing
+# Pi has no MCP client, permission gates, or subagents of its own; CodeBox
+# supplies all three from lib/pi-ext/. They live under lib/ rather than in a
+# directory of their own so they inherit the existing
 # ./lib:/opt/opencode/lib:ro dev mount — every service already carries
 # it, including the docker-compose.override.yml ones that use
 # `volumes: !override` and would otherwise silently run image-baked
@@ -457,6 +457,31 @@ _configure_opencode() {
 # every entry is checked for readability here and logged either way.
 # Sets _PI_EXTENSIONS_JSON to a JSON array of paths.
 PI_EXT_DIR="/opt/opencode/lib/pi-ext"
+PI_SUBAGENT_TEMPLATE_DIR="/opt/opencode/templates/pi-subagents"
+
+# The upstream Pi subagent extension discovers agents/prompts from the
+# persistent Pi config directory. Seed CodeBox's useful defaults once, but
+# never overwrite a user's customized files in that volume. Keeping the
+# definitions in templates also lets a normal restart pick up new defaults
+# for agents the user has not customized.
+_pi_subagent_resources() {
+    local kind source target file
+    for kind in agents prompts; do
+        source="${PI_SUBAGENT_TEMPLATE_DIR}/${kind}"
+        target="${PI_CODING_AGENT_DIR}/${kind}"
+        [ -d "${source}" ] || continue
+        mkdir -p "${target}"
+        chmod 700 "${target}"
+        for file in "${source}"/*.md; do
+            [ -f "${file}" ] || continue
+            if [ ! -e "${target}/$(basename "${file}")" ]; then
+                cp "${file}" "${target}/"
+                chmod 600 "${target}/$(basename "${file}")"
+                echo "  ✓ Pi subagent default: ${kind}/$(basename "${file}")"
+            fi
+        done
+    done
+}
 
 _pi_extensions() {
     local -a exts=()
@@ -473,6 +498,27 @@ _pi_extensions() {
         fi
     else
         echo "  → codebox-guard disabled (CODEBOX_PI_GUARD=${CODEBOX_PI_GUARD})"
+    fi
+
+    # Subagents: CodeBox vendors Pi's public reference extension and its
+    # model-pinned scout/planner/reviewer/worker definitions. Each delegate
+    # runs as an isolated Pi process. Omit it from children so a delegate
+    # cannot recursively dispatch more delegates and pay the schema cost.
+    if _is_true "${CODEBOX_PI_SUBAGENTS:-true}"; then
+        if [ "${CODEBOX_PI_SUBAGENT_CHILD:-}" = "1" ]; then
+            echo "  → codebox-subagents omitted in delegated Pi process"
+        else
+            file="${PI_EXT_DIR}/subagent/index.ts"
+            if [ -r "${file}" ]; then
+                _pi_subagent_resources
+                exts+=("${file}")
+                echo "  ✓ Extension: codebox-subagents (isolated, model-pinned task delegation)"
+            else
+                echo "  ⚠ Extension missing, skipping: ${file}"
+            fi
+        fi
+    else
+        echo "  → codebox-subagents disabled (CODEBOX_PI_SUBAGENTS=${CODEBOX_PI_SUBAGENTS})"
     fi
 
     # MCP bridge: needs the assembled server list, so it is only worth
@@ -512,8 +558,8 @@ _pi_extensions() {
 # ─── Pi config generation ───────────────────────────────────────────
 # Pi (pi.dev) reads its config from PI_CODING_AGENT_DIR (default
 # ~/.pi/agent, matched by PI_CONFIG_DIR/the Dockerfile's mkdir). Pi has
-# no *built-in* MCP client; CodeBox adds one as an extension, so the
-# CODEBOX_MCP_<NAME> gates apply here too — see _pi_extensions().
+# no *built-in* MCP client or subagents; CodeBox adds both as extensions,
+# so the CODEBOX_MCP_<NAME> gates apply here too — see _pi_extensions().
 _configure_pi() {
     echo "→ Generating Pi config..."
 

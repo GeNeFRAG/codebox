@@ -8,7 +8,7 @@ Run [OpenCode](https://github.com/opencode-ai/opencode), [Claude Code](https://g
 |-------|---------------|--------------|
 | **OpenCode** (default) | `opencode` | [OpenCode AI](https://github.com/opencode-ai/opencode) — supports `web`and `tmux` modes |
 | **Claude Code** | `claude-code` | [Anthropic Claude Code](https://github.com/anthropics/claude-code) — supports `tmux` modes only |
-| **Pi** | `pi` | [Pi coding agent](https://pi.dev) — supports `tmux` mode only; no sub-agents. MCP and permission gates are supplied by CodeBox extensions (`lib/pi-ext/`) |
+| **Pi** | `pi` | [Pi coding agent](https://pi.dev) — supports `tmux` mode only; MCP, safety gates, and model-pinned subagents are supplied by CodeBox extensions (`lib/pi-ext/`) |
 
 **UI mode** (set `CODEBOX_MODE` in `.env`), all served in the browser:
 
@@ -243,7 +243,7 @@ When running Claude Code in `tmux` mode, the status bar uses a simplified displa
 
 ## Pi Mode
 
-Set `CODEBOX_APP=pi` in `.env` to run [Pi](https://pi.dev) instead of OpenCode. Pi is tmux-only (`web` is a fatal error, same as Claude Code) and has no sub-agent/preset system, so `templates/oh-my-opencode-slim.json.template` has no effect under this app. It also ships no MCP client and no permission gates; CodeBox adds both as extensions from `lib/pi-ext/`, so `CODEBOX_MCP_*` *does* apply here.
+Set `CODEBOX_APP=pi` in `.env` to run [Pi](https://pi.dev) instead of OpenCode. Pi is tmux-only (`web` is a fatal error, same as Claude Code), and OpenCode's `templates/oh-my-opencode-slim.json.template` has no effect under this app. Pi ships no built-in MCP client, permission gates, or subagents; CodeBox adds each as an extension from `lib/pi-ext/`, so `CODEBOX_MCP_*` *does* apply here.
 
 ### Setup
 
@@ -291,13 +291,25 @@ When `LLM_BASE_URL` is set, `lib/config.sh` writes a custom `llm` provider into 
 
 ### MCP servers, sub-agents, and skills in Pi mode
 
-Pi has no *built-in* MCP client by design (its homepage advertises "No MCP"; its docs point you at extensions instead) and no sub-agent/preset system — `templates/oh-my-opencode-slim.json.template` has no effect under `CODEBOX_APP=pi`.
+Pi has no *built-in* MCP client, permission gates, or subagent system by design. CodeBox adds all three.
 
-CodeBox closes the MCP half with `lib/pi-ext/codebox-mcp.ts`, an MCP stdio client that reads the same `templates/mcp-servers/*.json` fragments as Claude Code (assembled by `lib/config.sh` into `/root/.pi/agent/mcp-servers.json`, gated by the same `CODEBOX_MCP_*` vars) and registers each server's tools as `mcp__<server>__<tool>`. Tool lists are cached on disk per server-config hash, so a normal start registers everything without spawning anything; a server process starts on first use and is killed at session end. Disable with `CODEBOX_PI_MCP=false`, narrow with `CODEBOX_PI_MCP_SERVERS`.
+`lib/pi-ext/subagent/index.ts` vendors Pi's public subagent extension. It gives the main agent a `subagent` tool that launches isolated Pi processes, supports parallel and chained work, and lets each delegate pin its own model. On first Pi boot, CodeBox seeds the persistent `~/.pi/agent/agents/` and `~/.pi/agent/prompts/` directories with these defaults:
 
-> Every enabled server's tool schemas ride along on every request — 100+ tools for the full fleet. The footer shows the live count. A skill is far cheaper when one exists, which is why `skills/atl` is usually the better answer than `mcp-atlassian`.
+| Agent / workflow | Default model / flow |
+|---|---|
+| `scout` | `claude-haiku-4-5` — fast, read-only codebase reconnaissance |
+| `planner`, `reviewer`, `worker` | `claude-sonnet-4-5` — planning, review, and implementation |
+| `/implement` | scout → planner → worker |
+| `/scout-and-plan` | scout → planner |
+| `/implement-and-review` | worker → reviewer → worker |
 
-The second extension, `lib/pi-ext/codebox-guard.ts`, supplies the permission gate Pi omits: it refuses `write`/`edit` (and the file-clobbering shapes of `bash`) against `.env` and other credential/generated-config paths, and blocks `docker` commands that would destroy this container by asking `lib/guard-bin/docker` for its verdict in dry-run mode. Disable with `CODEBOX_PI_GUARD=false`; add paths with `CODEBOX_PI_GUARD_PATHS`. Both extensions are covered by `scripts/verify-pi-extensions.sh`.
+The copies are never overwritten, so customize the model, tools, or instructions in `~/.pi/agent/agents/*.md`; add project-specific delegates in trusted `.pi/agents/*.md`. Disable the delegation tool with `CODEBOX_PI_SUBAGENTS=false`. Delegates do not recursively receive the `subagent` tool, but retain CodeBox's guard and MCP extensions.
+
+`lib/pi-ext/codebox-mcp.ts` supplies MCP: it reads the same `templates/mcp-servers/*.json` fragments as Claude Code (assembled by `lib/config.sh` into `/root/.pi/agent/mcp-servers.json`, gated by the same `CODEBOX_MCP_*` vars) and registers each server's tools as `mcp__<server>__<tool>`. Tool lists are cached on disk per server-config hash, so a normal start registers everything without spawning anything; a server process starts on first use and is killed at session end. Disable with `CODEBOX_PI_MCP=false`, narrow with `CODEBOX_PI_MCP_SERVERS`.
+
+> Every enabled MCP server's tool schemas ride along on every request — 100+ tools for the full fleet. The footer shows the live count. A skill is far cheaper when one exists, which is why `skills/atl` is usually the better answer than `mcp-atlassian`.
+
+`lib/pi-ext/codebox-guard.ts` supplies the permission gate Pi omits: it refuses `write`/`edit` (and the file-clobbering shapes of `bash`) against `.env` and other credential/generated-config paths, and blocks `docker` commands that would destroy this container by asking `lib/guard-bin/docker` for its verdict in dry-run mode. Disable with `CODEBOX_PI_GUARD=false`; add paths with `CODEBOX_PI_GUARD_PATHS`. All CodeBox Pi extensions are covered by `scripts/verify-pi-extensions.sh`.
 
 Pi's substitute for MCP is a CLI plus a **skill** that tells the model the CLI exists. Skills in `skills/` are `COPY`d to `/root/.agents/skills/` (Pi's harness-neutral global skill dir) in the Dockerfile's churn zone, alongside `agent-browser` and `simplify` which are installed there via `npx skills add`. Only skill *descriptions* stay in context; the model `read`s the full `SKILL.md` on demand.
 
@@ -431,6 +443,7 @@ services:
 | `CODEBOX_MCP_*` | Toggle individual MCP servers for Claude Code and Pi (default: `true`). Set to `false` to exclude from generated config. Servers: `MEMORY`, `CONTEXT7`, `TIME`, `WEBSEARCH`, `GITHUB_RBI`, `GITHUB_PERSONAL`, `MCP_ATLASSIAN`, `GRAFANA`, `DOCKER`, `SEQUENTIAL_THINKING` |
 | `CODEBOX_PI_GUARD` | Pi only. Load `lib/pi-ext/codebox-guard.ts`: protects `.env`/credential paths from `write`/`edit`/`bash`, blocks self-destructive `docker` (default: `true`) |
 | `CODEBOX_PI_GUARD_PATHS` | Pi only. Extra colon-separated paths for the guard to protect; trailing `/` means the whole subtree |
+| `CODEBOX_PI_SUBAGENTS` | Pi only. Load `lib/pi-ext/subagent/index.ts`, which delegates isolated, model-pinned tasks to the seeded `scout`/`planner`/`reviewer`/`worker` agents (default: `true`) |
 | `CODEBOX_PI_MCP` | Pi only. Load `lib/pi-ext/codebox-mcp.ts`, the MCP client Pi lacks (default: `true`) |
 | `CODEBOX_PI_MCP_SERVERS` | Pi only. Comma-separated allowlist narrowing which of the `CODEBOX_MCP_*`-enabled servers Pi loads. Unset = all |
 | `CODEBOX_PI_MCP_TIMEOUT` | Pi only. Per-request MCP timeout in ms (default: `120000`, generous enough for a first-run image pull) |
@@ -717,6 +730,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 - Both files are chmod `600` and skipped if the user bind-mounts their own (same mount-detection guard `_configure_opencode` uses for `oh-my-opencode-slim.json`)
 - **No `auth.json`** is written for Pi — deliberately; Pi's docs warn against configuring a credential in both `auth.json` and `models.json` for the same provider
 - **`mcp-servers.json`** — Same fragments and same `CODEBOX_MCP_*` gating as Claude Code, assembled by the shared `_generate_mcp_server_config`; consumed by `lib/pi-ext/codebox-mcp.ts` rather than by Pi itself. Removed when `CODEBOX_PI_MCP=false`, since it lives in the `pi-data-*` volume and would otherwise outlive the opt-out
+- **`agents/` and `prompts/`** — CodeBox's default model-pinned subagent definitions and workflow prompts are seeded from `templates/pi-subagents/` only if absent, preserving edits in the persistent Pi volume
 - **`extensions` in `settings.json`** — Absolute paths to the enabled `lib/pi-ext/*.ts`, resolved by `_pi_extensions()`. Checked for readability first: Pi ignores missing entries there silently
 
 

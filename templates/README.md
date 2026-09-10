@@ -8,6 +8,7 @@ Config templates substituted at container startup by `lib/config.sh` using `envs
 | `mcp-servers/*.json` | `/root/.claude/claude-code-mcp.json` | Claude Code (MCP servers) |
 | `mcp-servers/*.json` | `/root/.pi/agent/mcp-servers.json` | Pi, via `lib/pi-ext/codebox-mcp.ts` (MCP servers) |
 | `oh-my-opencode-slim.json.template` | `/root/.config/opencode/oh-my-opencode-slim.json` | OpenCode (agent roles) |
+| `pi-subagents/{agents,prompts}/*.md` | `/root/.pi/agent/{agents,prompts}/` (only when absent) | Pi's CodeBox-provided model-pinned subagent defaults and workflows |
 
 `mcp-servers/` is the odd one out: instead of one `envsubst` pass over a whole
 template, `_generate_mcp_server_config()` walks `_MCP_ALL_SERVERS`, skips
