@@ -19,10 +19,16 @@ _ENVSUBST_VARS_OPENCODE="${_ENVSUBST_VARS_MCP} "'${LLM_EFFECTIVE_URL} ${LLM_BASE
 
 # ─── Shared MCP server list (single source of truth) ───────────────
 # Consumed by both _generate_config() (opencode .mcp[].enabled gating)
-# and _generate_claude_code_mcp_config() (fragment include/exclude).
+# and _generate_mcp_server_config() (fragment include/exclude).
 # Keep in sync with templates/mcp-servers/*.json and the .mcp keys of
 # templates/opencode.json.template — see scripts/verify-mcp-sync.sh.
 _MCP_ALL_SERVERS="memory context7 time websearch github_rbi github_personal mcp-atlassian grafana docker sequential-thinking"
+
+# Truthiness for CODEBOX_* toggles. Both "true" and "1" are accepted
+# everywhere in this file; anything else (including "") is false.
+_is_true() {
+    [ "${1:-}" = "true" ] || [ "${1:-}" = "1" ]
+}
 
 # ─── Model catalog → per-agent model config ─────────────────────────
 # The gateway is LiteLLM in front of Bedrock/Azure. Two things matter and
@@ -131,7 +137,7 @@ _generate_config() {
     # Layering: CODEBOX_MCP_<NAME> set → authoritative (true/1 → enabled,
     # anything else → disabled). Unset → leave the template's own value
     # untouched (template = default, env = override). Mirrors the gating
-    # in _generate_claude_code_mcp_config() so both agent paths agree.
+    # in _generate_mcp_server_config() so both agent paths agree.
     local jq_filter="."
     local enabled_list=""
     local disabled_list=""
@@ -220,11 +226,16 @@ _generate_tui_config() {
     echo "  ✓ TUI theme set to ${OPENCODE_TUI_THEME} (${tui_cfg})"
 }
 
-# ─── Claude Code MCP server assembly ───────────────────────────────
-# Builds claude-code-mcp.json by including only enabled MCP servers.
-# All servers are gated by CODEBOX_MCP_<NAME> env vars (default: true).
-_generate_claude_code_mcp_config() {
+# ─── MCP server assembly (Claude Code + Pi) ────────────────────────
+# Builds an {"mcpServers":{...}} file from templates/mcp-servers/*.json,
+# including only servers enabled by CODEBOX_MCP_<NAME> (default: true).
+# Used by both agents that can speak MCP: Claude Code natively, and Pi
+# through lib/pi-ext/codebox-mcp.ts, which reads the same shape. Keeping
+# one assembler means "add an MCP server" stays a one-fragment change.
+#   $1 — output file   $2 — label for the boot log (default "Claude Code")
+_generate_mcp_server_config() {
     local mcp_config="$1"
+    local label="${2:-Claude Code}"
     local mcp_parts_dir="/opt/opencode/templates/mcp-servers"
     local result='{"mcpServers":{}}'
     local enabled_list=""
@@ -257,7 +268,7 @@ _generate_claude_code_mcp_config() {
         echo "  ✗ FATAL: MCP config generation failed (${mcp_config} is empty)"
         exit 1
     fi
-    echo "  ✓ Claude Code MCP config: enabled=[${enabled_list# }]"
+    echo "  ✓ ${label} MCP config: enabled=[${enabled_list# }]"
     if [ -n "${disabled_list}" ]; then
         echo "  ✓ MCP servers disabled:[${disabled_list# }]"
     fi
@@ -272,7 +283,7 @@ _generate_claude_code_config() {
     mkdir -p "${settings_dir}"
 
     # 1. Generate MCP config by assembling enabled servers
-    _generate_claude_code_mcp_config "${mcp_config}"
+    _generate_mcp_server_config "${mcp_config}" "Claude Code"
 
     # 2. Generate settings.json
     # Validate permission mode for settings.json (narrower set than the CLI flag)
@@ -432,10 +443,77 @@ _configure_opencode() {
     fi
 }
 
+# ─── Pi extension wiring ────────────────────────────────────────────
+# Pi has no MCP client and no permission gates of its own; both are
+# supplied as extensions from lib/pi-ext/. They live under lib/ rather
+# than in a directory of their own so they inherit the existing
+# ./lib:/opt/opencode/lib:ro dev mount — every service already carries
+# it, including the docker-compose.override.yml ones that use
+# `volumes: !override` and would otherwise silently run image-baked
+# copies (see the Dev Workflow warning in AGENTS.md).
+#
+# Pi discovers these through settings.json's "extensions" array, which
+# takes absolute paths. Missing paths there are ignored *silently*, so
+# every entry is checked for readability here and logged either way.
+# Sets _PI_EXTENSIONS_JSON to a JSON array of paths.
+PI_EXT_DIR="/opt/opencode/lib/pi-ext"
+
+_pi_extensions() {
+    local -a exts=()
+    local file
+
+    # Guard: path protection + docker self-destruct interception.
+    if _is_true "${CODEBOX_PI_GUARD:-true}"; then
+        file="${PI_EXT_DIR}/codebox-guard.ts"
+        if [ -r "${file}" ]; then
+            exts+=("${file}")
+            echo "  ✓ Extension: codebox-guard (protects .env/credentials, blocks self-destructive docker)"
+        else
+            echo "  ⚠ Extension missing, skipping: ${file}"
+        fi
+    else
+        echo "  → codebox-guard disabled (CODEBOX_PI_GUARD=${CODEBOX_PI_GUARD})"
+    fi
+
+    # MCP bridge: needs the assembled server list, so it is only worth
+    # loading when that file has servers in it.
+    local mcp_config="${PI_CODING_AGENT_DIR}/mcp-servers.json"
+    # Tell the extension where both files are instead of letting it guess:
+    # it can only derive them from PI_CODING_AGENT_DIR, and a user who
+    # bind-mounts a different config dir would silently get no MCP tools.
+    export CODEBOX_PI_MCP_CONFIG="${mcp_config}"
+    export CODEBOX_PI_MCP_CACHE="${PI_CODING_AGENT_DIR}/mcp-tools-cache.json"
+    if _is_true "${CODEBOX_PI_MCP:-true}"; then
+        _generate_mcp_server_config "${mcp_config}" "Pi"
+        chmod 600 "${mcp_config}" 2>/dev/null || true
+        file="${PI_EXT_DIR}/codebox-mcp.ts"
+        if [ ! -r "${file}" ]; then
+            echo "  ⚠ Extension missing, skipping: ${file}"
+        elif [ "$(jq -r '.mcpServers | length' "${mcp_config}" 2>/dev/null || echo 0)" = "0" ]; then
+            echo "  → codebox-mcp not loaded (no MCP servers enabled)"
+        else
+            exts+=("${file}")
+            echo "  ✓ Extension: codebox-mcp (MCP tools for Pi; tool schemas cost context — trim with CODEBOX_MCP_<NAME>=false)"
+        fi
+    else
+        # The config lives in the pi-data volume, so a stale copy would
+        # outlive the opt-out and keep feeding the extension servers.
+        rm -f "${mcp_config}" "${CODEBOX_PI_MCP_CACHE}"
+        echo "  → codebox-mcp disabled (CODEBOX_PI_MCP=${CODEBOX_PI_MCP})"
+    fi
+
+    if [ "${#exts[@]}" -eq 0 ]; then
+        _PI_EXTENSIONS_JSON="[]"
+    else
+        _PI_EXTENSIONS_JSON=$(printf '%s\n' "${exts[@]}" | jq -R . | jq -s .)
+    fi
+}
+
 # ─── Pi config generation ───────────────────────────────────────────
 # Pi (pi.dev) reads its config from PI_CODING_AGENT_DIR (default
-# ~/.pi/agent, matched by PI_CONFIG_DIR/the Dockerfile's mkdir). Unlike
-# opencode/claude-code, Pi has no MCP support by design — do not add any.
+# ~/.pi/agent, matched by PI_CONFIG_DIR/the Dockerfile's mkdir). Pi has
+# no *built-in* MCP client; CodeBox adds one as an extension, so the
+# CODEBOX_MCP_<NAME> gates apply here too — see _pi_extensions().
 _configure_pi() {
     echo "→ Generating Pi config..."
 
@@ -534,9 +612,18 @@ _configure_pi() {
         echo "  → models.json skipped (LLM_BASE_URL not set)"
     fi
 
-    # 4. Generate settings.json.
+    # 4. Resolve extensions before settings.json is written — their paths
+    #    go into it. Also assembles mcp-servers.json as a side effect.
+    _PI_EXTENSIONS_JSON="[]"
+    _pi_extensions
+
+    # 5. Generate settings.json.
     if grep -qE " ${settings_file}( |$)" /proc/self/mountinfo 2>/dev/null; then
         echo "  → settings.json is bind-mounted — leaving user config in place"
+        if [ "${_PI_EXTENSIONS_JSON}" != "[]" ]; then
+            echo "    ⚠ CodeBox extensions are NOT active: add them to your own"
+            echo "      settings.json \"extensions\" array: ${_PI_EXTENSIONS_JSON}"
+        fi
     else
         # defaultProjectTrust: default "always" — /workspace is the user's
         # own mounted repo and CodeBox already pre-trusts it for Claude Code
@@ -599,6 +686,7 @@ _configure_pi() {
             --arg proxy "${_pi_proxy}" \
             --argjson budgets "${_pi_budgets}" \
             --argjson reserve "${_pi_reserve}" \
+            --argjson exts "${_PI_EXTENSIONS_JSON}" \
             --argjson models_written "${_models_written}" '
             {
                 defaultProjectTrust: $trust,
@@ -609,16 +697,17 @@ _configure_pi() {
                 compaction: {enabled: true, reserveTokens: $reserve},
                 showCacheMissNotices: true
             }
+            + (if ($exts | length) > 0 then {extensions: $exts} else {} end)
             + (if $models_written then {defaultProvider: $provider} else {} end)
             + (if $model != "" then {defaultModel: $model} else {} end)
             + (if $thinking != "" then {defaultThinkingLevel: $thinking} else {} end)
             + (if $proxy != "" then {httpProxy: $proxy} else {} end)
         ' > "${settings_file}"
         chmod 600 "${settings_file}"
-        echo "  ✓ settings.json written (trust=${_pi_trust}, theme=${_pi_theme})"
+        echo "  ✓ settings.json written (trust=${_pi_trust}, theme=${_pi_theme}, extensions=$(jq 'length' <<<"${_PI_EXTENSIONS_JSON}"))"
     fi
 
-    # 5. Credential presence check — Pi can also authenticate from
+    # 6. Credential presence check — Pi can also authenticate from
     #    standard provider env vars, not just models.json's apiKey field.
     if [ -z "${LLM_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
         echo "  ⚠ No API key set — Pi requires LLM_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY"

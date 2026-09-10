@@ -26,6 +26,16 @@ set -uo pipefail
 
 REAL="/usr/local/bin/docker"
 
+# Dry-run is checked first and unconditionally, because it is the one mode
+# that promises to execute nothing. It has to outrank the bypass below:
+# lib/pi-ext/codebox-guard.ts probes this shim in dry-run mode to decide
+# whether to block a tool call, and if the bypass won that race, probing
+# `docker stop <self>` would stop the container instead of describing it.
+if [ "${CODEBOX_GUARD_DRYRUN:-}" = "1" ] && [ "${CODEBOX_ALLOW_IN_CONTAINER:-false}" = "true" ]; then
+    echo "ALLOW  guard bypassed via CODEBOX_ALLOW_IN_CONTAINER"
+    exit 0
+fi
+
 # Blunt bypass, checked before anything else so it costs nothing.
 if [ "${CODEBOX_ALLOW_IN_CONTAINER:-false}" = "true" ]; then
     exec "$REAL" "$@"

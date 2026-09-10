@@ -6,12 +6,16 @@ Config templates substituted at container startup by `lib/config.sh` using `envs
 |------|-----------|---------|
 | `opencode.json.template` | `/root/.config/opencode/opencode.json` | OpenCode |
 | `mcp-servers/*.json` | `/root/.claude/claude-code-mcp.json` | Claude Code (MCP servers) |
+| `mcp-servers/*.json` | `/root/.pi/agent/mcp-servers.json` | Pi, via `lib/pi-ext/codebox-mcp.ts` (MCP servers) |
 | `oh-my-opencode-slim.json.template` | `/root/.config/opencode/oh-my-opencode-slim.json` | OpenCode (agent roles) |
 
 `mcp-servers/` is the odd one out: instead of one `envsubst` pass over a whole
-template, `_generate_claude_code_mcp_config()` walks its `all_servers` list, skips
+template, `_generate_mcp_server_config()` walks `_MCP_ALL_SERVERS`, skips
 anything disabled via `CODEBOX_MCP_<NAME>`, runs each remaining part through
-`envsubst`, and `jq`-merges the results into a single file.
+`envsubst`, and `jq`-merges the results into a single file. It is called twice
+with different output paths — once for Claude Code, once for Pi — so one
+fragment serves both agents. Pi has no MCP client of its own; `lib/pi-ext/codebox-mcp.ts`
+reads that file and speaks the protocol.
 
 > `claude-code.mcp.json.template` is **not** substituted at startup and is not
 > written anywhere. It is the reference manifest `scripts/verify-mcp-sync.sh` diffs
