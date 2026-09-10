@@ -110,7 +110,7 @@ CODEBOX_MODEL_DISCOVERY_TIMEOUT=30
 /tmp/codebox-gateway-models-<hash>.json
 ```
 
-Where `<hash>` is the first 8 characters of SHA256(LLM_BASE_URL). This allows:
+Where `<hash>` is the first 16 characters of SHA256(LLM_BASE_URL). This allows:
 - Multiple instances with different gateways to coexist
 - Cache to survive container restarts (if `/tmp` is preserved)
 - Different services in `docker-compose.override.yml` to share cache

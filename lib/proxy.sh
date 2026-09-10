@@ -47,7 +47,10 @@ _start_proxy() {
         unset PROXY_PID
         # Re-generate config to point directly at the upstream URL
         export LLM_EFFECTIVE_URL="${LLM_BASE_URL}"
-        _generate_config
+        if ! _generate_config; then
+            echo "  ✗ FATAL: Config regeneration failed" >&2
+            exit 1
+        fi
     fi
 }
 

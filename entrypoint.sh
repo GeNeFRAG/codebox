@@ -83,15 +83,24 @@ case "${CODEBOX_APP}" in
     claude-code)
         echo "→ Configuring Claude Code..."
         export PREFILL_PROXY_ENABLED=false
-        _generate_claude_code_config
+        if ! _generate_claude_code_config; then
+            echo "✗ FATAL: Claude Code configuration failed" >&2
+            exit 1
+        fi
         ;;
     pi)
         echo "→ Configuring Pi..."
         export PREFILL_PROXY_ENABLED=false
-        _configure_pi
+        if ! _configure_pi; then
+            echo "✗ FATAL: Pi configuration failed" >&2
+            exit 1
+        fi
         ;;
     *)
-        _configure_opencode
+        if ! _configure_opencode; then
+            echo "✗ FATAL: OpenCode configuration failed" >&2
+            exit 1
+        fi
         ;;
 esac
 _generate_atl_config
@@ -122,7 +131,10 @@ _install_playwright
 
 # ─── 10. Prefill proxy (OpenCode only) ─────────────────────────────
 if [ "${CODEBOX_APP}" = "opencode" ] && [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
-    _start_proxy
+    if ! _start_proxy; then
+        echo "✗ FATAL: Proxy startup and fallback failed" >&2
+        exit 1
+    fi
 elif [ "${CODEBOX_APP}" = "opencode" ]; then
     echo "→ Prefill proxy disabled — connecting directly to ${LLM_BASE_URL}"
 fi

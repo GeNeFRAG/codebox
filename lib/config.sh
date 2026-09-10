@@ -86,9 +86,10 @@ _write_model_cache() {
     local now
     now=$(date +%s)
 
-    jq -n --argjson models "${models_json}" --argjson ts "${now}" \
-        '{timestamp: $ts, models: $models}' > "${cache_file}" 2>/dev/null
-    chmod 600 "${cache_file}"
+    if jq -n --argjson models "${models_json}" --argjson ts "${now}" \
+        '{timestamp: $ts, models: $models}' > "${cache_file}" 2>/dev/null; then
+        chmod 600 "${cache_file}"
+    fi
 }
 
 # Discovers available models from gateway /v1/models endpoint
@@ -197,12 +198,20 @@ _get_catalog_for_agent() {
                 else
                     # Discovery succeeded but no models matched
                     echo "  ⚠ Gateway returned ${discovered_count} models but none match catalog" >&2
+                    echo "    Gateway models: $(jq -r 'join(", ")' <<<"${discovered}" 2>/dev/null)" >&2
                     if _is_true "${CODEBOX_REQUIRE_LLM_GATEWAY:-false}"; then
                         echo "  ✗ FATAL: Gateway required but no catalog models available" >&2
-                        echo "    Set CODEBOX_REQUIRE_LLM_GATEWAY=false to fall back to full catalog" >&2
+                        echo "    Add gateway models to templates/model-catalog.json or set CODEBOX_REQUIRE_LLM_GATEWAY=false" >&2
                         return 1
                     fi
                     # Fall through to full catalog fallback below
+                fi
+            else
+                # Filter operation itself failed
+                echo "  ⚠ Failed to filter catalog (jq error)" >&2
+                if _is_true "${CODEBOX_REQUIRE_LLM_GATEWAY:-false}"; then
+                    echo "  ✗ FATAL: Catalog filtering failed and gateway is required" >&2
+                    return 1
                 fi
             fi
         fi
@@ -210,7 +219,8 @@ _get_catalog_for_agent() {
 
     # Discovery failed or filtering yielded no results
     if _is_true "${CODEBOX_REQUIRE_LLM_GATEWAY:-false}"; then
-        echo "  ✗ FATAL: Gateway required but unreachable (${LLM_BASE_URL})" >&2
+        echo "  ✗ FATAL: Gateway discovery failed (${LLM_BASE_URL})" >&2
+        echo "    Check LLM_BASE_URL, LLM_API_KEY, network connectivity, and gateway health" >&2
         echo "    Set CODEBOX_REQUIRE_LLM_GATEWAY=false to fall back to full catalog" >&2
         return 1
     fi
@@ -219,8 +229,37 @@ _get_catalog_for_agent() {
     local catalog_count
     catalog_count=$(jq '.models | length' <<<"${full_catalog}" 2>/dev/null || echo 0)
     echo "  ⚠ Gateway discovery failed or yielded no matches, using full catalog (${catalog_count} models)" >&2
+    echo "    Gateway may not support configured models; runtime errors possible" >&2
     echo "    Set CODEBOX_REQUIRE_LLM_GATEWAY=true to fail instead of falling back" >&2
     echo "${full_catalog}"
+}
+
+# ─── Model validation and normalization ────────────────────────────
+# Validates a model reference against a catalog and normalizes to llm/<id> format.
+# Args: $1=model_ref (e.g. "model-id" or "llm/model-id"), $2=catalog_json, $3=var_name (for errors)
+# Returns: normalized "llm/model-id" on stdout if valid, empty string if invalid
+# Exit code: 0=valid, 1=invalid
+_validate_and_normalize_model() {
+    local model_ref="${1:-}"
+    local catalog_json="${2:-}"
+    local var_name="${3:-MODEL}"
+
+    [ -z "${model_ref}" ] && return 1
+    [ -z "${catalog_json}" ] && return 1
+
+    # Strip llm/ prefix if present
+    local base_id="${model_ref#llm/}"
+
+    # Check if model exists in catalog
+    local exists
+    exists=$(jq --arg id "${base_id}" '[.models[].id] | index($id) != null' <<<"${catalog_json}" 2>/dev/null)
+
+    if [ "${exists}" = "true" ]; then
+        echo "llm/${base_id}"
+        return 0
+    else
+        return 1
+    fi
 }
 
 # ─── Model catalog → per-agent model config ─────────────────────────
@@ -327,22 +366,35 @@ _generate_config() {
     # When LLM_BASE_URL is set, discover available models and filter the catalog.
     if [ -s "${MODEL_CATALOG}" ] && command -v jq &>/dev/null; then
         local _catalog
-        if _catalog=$(_get_catalog_for_agent); then
-            local _oc_models
-            if _oc_models=$(_opencode_models_from_catalog "${_catalog}"); then
-                if jq --argjson m "${_oc_models}" '.provider.llm.models = $m' \
-                       "${CONFIG_FILE}" > "${CONFIG_FILE}.tmp" 2>/dev/null \
-                       && [ -s "${CONFIG_FILE}.tmp" ]; then
-                    mv "${CONFIG_FILE}.tmp" "${CONFIG_FILE}"
-                    chmod 600 "${CONFIG_FILE}"
-                    echo "  ✓ Model catalog: $(jq 'length' <<<"${_oc_models}") models injected"
-                else
-                    rm -f "${CONFIG_FILE}.tmp"
-                    echo "  ⚠ Model catalog injection failed — using template snapshot"
-                fi
+        # Reuse catalog if caller already fetched it (avoids double discovery)
+        if [ -n "${_REUSE_CATALOG:-}" ]; then
+            _catalog="${_REUSE_CATALOG}"
+        elif _catalog=$(_get_catalog_for_agent); then
+            : # Got fresh catalog
+        else
+            if [ "${CODEBOX_REQUIRE_LLM_GATEWAY:-false}" = "true" ]; then
+                echo "  ✗ Failed to get catalog (gateway required but unavailable)" >&2
+            else
+                echo "  ⚠ Failed to get catalog (falling back to template snapshot)" >&2
+            fi
+            return 1
+        fi
+
+        local _oc_models
+        if _oc_models=$(_opencode_models_from_catalog "${_catalog}"); then
+            if jq --argjson m "${_oc_models}" '.provider.llm.models = $m' \
+                   "${CONFIG_FILE}" > "${CONFIG_FILE}.tmp" 2>/dev/null \
+                   && [ -s "${CONFIG_FILE}.tmp" ]; then
+                mv "${CONFIG_FILE}.tmp" "${CONFIG_FILE}"
+                chmod 600 "${CONFIG_FILE}"
+                echo "  ✓ Model catalog: $(jq 'length' <<<"${_oc_models}") models injected"
+            else
+                rm -f "${CONFIG_FILE}.tmp"
+                echo "  ⚠ Model catalog injection failed — using template snapshot" >&2
+                return 1
             fi
         else
-            echo "  ✗ Failed to get catalog (gateway required but unavailable)" >&2
+            echo "  ⚠ Model catalog transform failed" >&2
             return 1
         fi
     fi
@@ -581,7 +633,7 @@ _generate_claude_code_config() {
 _fail_plugin_validation() {
     local phase="${1}"
     echo "  ✗ FATAL: oh-my-opencode-slim ${phase} validation failed" >&2
-    exit 1
+    return 1
 }
 
 # Extract all model references from oh-my-opencode-slim config
@@ -692,23 +744,6 @@ _report_plugin_model_status() {
 _configure_opencode() {
     echo "→ Generating opencode.json from template..."
 
-    # ─── LLM Gateway health check — fallback model if unreachable ──────
-    if [ -n "${LLM_BASE_URL}" ] && [ -n "${OPENCODE_MODEL_FALLBACK}" ]; then
-        MODELS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -H "Authorization: Bearer ${LLM_API_KEY}" "${LLM_BASE_URL}/models" 2>/dev/null || echo "000")
-        echo "  → LLM gateway check: /models=${MODELS_CODE}"
-        if [[ "${MODELS_CODE}" =~ ^(2|3) ]]; then
-            echo "  ✓ LLM gateway reachable (${LLM_BASE_URL}) — using ${OPENCODE_MODEL}"
-        else
-            echo "  ⚠ LLM gateway unhealthy (${LLM_BASE_URL}) — falling back to ${OPENCODE_MODEL_FALLBACK}"
-            export OPENCODE_MODEL="${OPENCODE_MODEL_FALLBACK}"
-            # Disable prefill proxy — it only applies to the LLM gateway
-            export PREFILL_PROXY="false"
-        fi
-    else
-        [ -z "${LLM_BASE_URL}" ] && echo "  → LLM gateway check skipped (LLM_BASE_URL not set)"
-        [ -z "${OPENCODE_MODEL_FALLBACK}" ] && echo "  → LLM gateway check skipped (OPENCODE_MODEL_FALLBACK not set)"
-    fi
-
     # Determine the effective LLM URL based on whether the prefill proxy is enabled.
     # The proxy hasn't started yet, but the URL is deterministic — we'll verify later.
     PREFILL_PROXY_ENABLED="${PREFILL_PROXY:-false}"
@@ -730,7 +765,66 @@ _configure_opencode() {
     # so a non-llm main provider is not broken by this default.
     export OPENCODE_SMALL_MODEL="${OPENCODE_SMALL_MODEL:-llm/claude-haiku-4-5}"
 
+    # ─── Get catalog once (filtered by gateway if available) ─────────────
+    # This is the single source of truth for all subsequent operations in this
+    # function. Avoids repeating discovery when validating models and plugins.
+    local _opencode_catalog
+    if ! _opencode_catalog=$(_get_catalog_for_agent); then
+        # Fatal: gateway required but unavailable, or catalog invalid
+        echo "  ✗ Configuration failed: unable to get model catalog" >&2
+        return 1
+    fi
+
+    # ─── Validate and normalize OPENCODE_MODEL ────────────────────
+    if [ -n "${OPENCODE_MODEL:-}" ]; then
+        local _validated_model
+        if _validated_model=$(_validate_and_normalize_model "${OPENCODE_MODEL}" "${_opencode_catalog}" "OPENCODE_MODEL"); then
+            export OPENCODE_MODEL="${_validated_model}"
+            echo "  ✓ Primary model: ${OPENCODE_MODEL}"
+        else
+            echo "  ⚠ OPENCODE_MODEL='${OPENCODE_MODEL}' not in filtered catalog" >&2
+            if [ -n "${OPENCODE_MODEL_FALLBACK:-}" ]; then
+                local _validated_fallback
+                if _validated_fallback=$(_validate_and_normalize_model "${OPENCODE_MODEL_FALLBACK}" "${_opencode_catalog}" "OPENCODE_MODEL_FALLBACK"); then
+                    echo "  ✓ Using fallback model: ${_validated_fallback}" >&2
+                    export OPENCODE_MODEL="${_validated_fallback}"
+                else
+                    echo "  ✗ OPENCODE_MODEL_FALLBACK='${OPENCODE_MODEL_FALLBACK}' also not in catalog" >&2
+                    if _is_true "${CODEBOX_REQUIRE_LLM_GATEWAY:-false}"; then
+                        echo "  ✗ FATAL: No valid model configured and gateway is required" >&2
+                        return 1
+                    fi
+                    echo "    Keeping OPENCODE_MODEL='${OPENCODE_MODEL}' (may fail at runtime)" >&2
+                fi
+            else
+                if _is_true "${CODEBOX_REQUIRE_LLM_GATEWAY:-false}"; then
+                    echo "  ✗ FATAL: Invalid model and no fallback configured" >&2
+                    return 1
+                fi
+                echo "    Keeping OPENCODE_MODEL='${OPENCODE_MODEL}' (may fail at runtime)" >&2
+            fi
+        fi
+    fi
+
+    # ─── Validate and normalize OPENCODE_SMALL_MODEL ─────────────────
+    if [ -n "${OPENCODE_SMALL_MODEL:-}" ]; then
+        local _validated_small
+        if _validated_small=$(_validate_and_normalize_model "${OPENCODE_SMALL_MODEL}" "${_opencode_catalog}" "OPENCODE_SMALL_MODEL"); then
+            export OPENCODE_SMALL_MODEL="${_validated_small}"
+            echo "  ✓ Small model (titles): ${OPENCODE_SMALL_MODEL}"
+        else
+            echo "  ⚠ OPENCODE_SMALL_MODEL='${OPENCODE_SMALL_MODEL}' not in catalog (will degrade to main model)" >&2
+        fi
+    fi
+
+    # ─── Generate config with the validated catalog ────────────────────
+    # Pass the catalog to _generate_config's model injection section.
+    # We can't directly pass it as a parameter without changing _generate_config
+    # signature (which is also called from proxy fallback path), so we'll
+    # modify _generate_config to check for _REUSE_CATALOG variable.
+    export _REUSE_CATALOG="${_opencode_catalog}"
     _generate_config
+    unset _REUSE_CATALOG
     echo "  ✓ Config written to ${CONFIG_FILE}"
     _generate_tui_config
 
@@ -751,8 +845,9 @@ _configure_opencode() {
     # ─── Validate oh-my-opencode-slim model references ──────────────
     # Two-phase validation:
     #   1. Static: check template against full catalog (catches typos)
-    #   2. Runtime: check against post-discovery catalog (warns about
-    #      unavailable models that may cause fallback chain failures)
+    #   2. Runtime: check against the already-filtered catalog we got above
+    #      (warns about unavailable models that may cause fallback failures).
+    # Both phases reuse catalogs we already have — no repeated discovery.
     if [ -f "${_plugin_cfg}" ] && [ -s "${MODEL_CATALOG}" ]; then
         # Phase 1: Static validation against full catalog
         local _full_catalog
@@ -761,22 +856,12 @@ _configure_opencode() {
             _fail_plugin_validation "static"
         fi
 
-        # Phase 2: Runtime validation against discovered/filtered catalog
-        # This uses the same catalog that was injected into opencode.json,
-        # so we're checking that plugin refs match what opencode can actually use.
-        # Skip if _generate_config hasn't run yet or if gateway discovery is disabled.
-        if [ -n "${LLM_BASE_URL:-}" ]; then
-            local _runtime_catalog
-            if _runtime_catalog=$(_get_catalog_for_agent); then
-                if ! _validate_plugin_models "${_plugin_cfg}" "${_runtime_catalog}" "runtime"; then
-                    _fail_plugin_validation "runtime"
-                fi
-                _report_plugin_model_status "${_plugin_cfg}" "${_runtime_catalog}"
-            fi
-        else
-            # No gateway — runtime catalog = full catalog
-            _report_plugin_model_status "${_plugin_cfg}" "${_full_catalog}"
+        # Phase 2: Runtime validation against the filtered catalog from above
+        # No need to call _get_catalog_for_agent again — we already have it.
+        if ! _validate_plugin_models "${_plugin_cfg}" "${_opencode_catalog}" "runtime"; then
+            _fail_plugin_validation "runtime"
         fi
+        _report_plugin_model_status "${_plugin_cfg}" "${_opencode_catalog}"
     fi
 
     # ─── Generate auth.json if API key is set ──────────────────────────
@@ -977,18 +1062,20 @@ _configure_pi() {
             # truncated models_file — leaving a 0-byte file behind a
             # "✓ written" line. Stage in a scratch var and keep [] as the
             # floor instead.
-            local _models_json="[]" _catalog="" _catalog_models=""
+            local _models_json="[]" _pi_catalog="" _catalog_models=""
             if [ -s "${MODEL_CATALOG}" ]; then
-                if _catalog=$(_get_catalog_for_agent); then
-                    if _catalog_models=$(_pi_models_from_catalog "${_catalog}") \
-                       && [ -n "${_catalog_models}" ]; then
-                        _models_json="${_catalog_models}"
-                        echo "  ✓ Model catalog: $(jq 'length' <<<"${_models_json}") models injected"
+                if ! _pi_catalog=$(_get_catalog_for_agent); then
+                    # Gateway discovery failed
+                    if _is_true "${CODEBOX_REQUIRE_LLM_GATEWAY:-false}"; then
+                        # Gateway required but unavailable - fail
+                        echo "  ✗ Configuration failed: unable to get model catalog" >&2
+                        return 1
                     fi
-                elif _is_true "${CODEBOX_REQUIRE_LLM_GATEWAY:-false}"; then
-                    # Gateway required but unavailable - fail
-                    echo "  ✗ Failed to get catalog (gateway required but unavailable)" >&2
-                    return 1
+                    # Not required - continue with empty catalog (will use fallback below)
+                elif _catalog_models=$(_pi_models_from_catalog "${_pi_catalog}") \
+                   && [ -n "${_catalog_models}" ]; then
+                    _models_json="${_catalog_models}"
+                    echo "  ✓ Model catalog: $(jq 'length' <<<"${_models_json}") models injected"
                 fi
             fi
 
