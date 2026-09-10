@@ -88,7 +88,7 @@ _pi_models_from_catalog() {
           + (if .thinkingLevelMap then {thinkingLevelMap: .thinkingLevelMap} else {} end)
           + (if .compat then {compat: .compat} else {} end)
           + (if (.id | startswith("claude-")) and (.api != "anthropic-messages")
-             then {compat: (.compat // {}) + {cacheControlFormat: "anthropic"}} else {} end)
+             then {compat: ((.compat // {}) + {cacheControlFormat: "anthropic"})} else {} end)
         ]' "${MODEL_CATALOG}" 2>/dev/null
 }
 
