@@ -3,6 +3,9 @@
   "models": [
     {
       "id": "claude-opus-5",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Opus 5",
       "context": 1000000,
       "output": 128000,
@@ -26,6 +29,9 @@
     },
     {
       "id": "claude-opus-4-8",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Opus 4.8",
       "context": 1000000,
       "output": 128000,
@@ -49,6 +55,9 @@
     },
     {
       "id": "claude-opus-4-7",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Opus 4.7",
       "context": 1000000,
       "output": 128000,
@@ -72,6 +81,9 @@
     },
     {
       "id": "claude-opus-4-6",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Opus 4.6",
       "context": 1000000,
       "output": 128000,
@@ -95,6 +107,9 @@
     },
     {
       "id": "claude-opus-4-5",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Opus 4.5",
       "context": 200000,
       "output": 64000,
@@ -118,6 +133,9 @@
     },
     {
       "id": "claude-sonnet-5",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Sonnet 5",
       "context": 1000000,
       "output": 128000,
@@ -141,6 +159,9 @@
     },
     {
       "id": "claude-sonnet-4-6",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Sonnet 4.6",
       "context": 1000000,
       "output": 64000,
@@ -164,6 +185,9 @@
     },
     {
       "id": "claude-sonnet-4-5",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Sonnet 4.5",
       "context": 200000,
       "output": 64000,
@@ -187,6 +211,9 @@
     },
     {
       "id": "claude-haiku-4-5",
+      "compat": {
+        "supportsEagerToolInputStreaming": false
+      },
       "name": "Claude Haiku 4.5",
       "context": 200000,
       "output": 64000,

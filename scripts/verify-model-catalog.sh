@@ -18,7 +18,9 @@
 #      (Pi-only: opencode reads just limits/pricing from the catalog.)
 #   4. Non-anthropic-messages Claude models declare a cacheControlFormat
 #      escape hatch, else prompt caching is silently off.
-#   5. Optional: with LLM_BASE_URL + LLM_API_KEY set, cross-check every
+#   5. Claude models disable eager tool-input streaming because this
+#      LiteLLM gateway rejects tools[].eager_input_streaming.
+#   6. Optional: with LLM_BASE_URL + LLM_API_KEY set, cross-check every
 #      catalog id, context window and output cap against the live gateway.
 #
 # Exit 0 = catalog consistent; Exit 1 = problem found.
@@ -82,7 +84,16 @@ if [ -n "${bad_api}" ]; then
     [ -n "${no_cache}" ] && fail "…and without compat.cacheControlFormat=anthropic, prompt caching is off too:"$'\n'"${no_cache}"
 fi
 
-# ─── 5. Optional live gateway cross-check ───────────────────────────
+# The Anthropic-compatible gateway validates tool schemas strictly and
+# rejects Pi's default tools[].eager_input_streaming field. Pi falls back to
+# the legacy fine-grained-tool-streaming beta when this capability is false.
+missing_eager_compat=$(jq -r '.models[]
+    | select((.id | startswith("claude-")) and .api == "anthropic-messages")
+    | select(.compat.supportsEagerToolInputStreaming != false)
+    | .id' "${CATALOG}")
+[ -n "${missing_eager_compat}" ] && fail "Claude models must set compat.supportsEagerToolInputStreaming=false (gateway rejects tools[].eager_input_streaming):"$'\n'"${missing_eager_compat}"
+
+# ─── 6. Optional live gateway cross-check ───────────────────────────
 if [ -n "${LLM_BASE_URL:-}" ] && [ -n "${LLM_API_KEY:-}" ]; then
     live=$(curl -sf --max-time 15 -H "Authorization: Bearer ${LLM_API_KEY}" \
            "${LLM_BASE_URL}/v1/models" 2>/dev/null)

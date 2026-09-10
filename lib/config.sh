@@ -58,6 +58,10 @@ _is_true() {
 #      full prefix at input rate (10x the cache_read rate on Opus).
 #      Set explicitly for any Claude model left on an OpenAI route.
 #
+#   3. supportsEagerToolInputStreaming — the gateway rejects Pi's default
+#      tools[].eager_input_streaming field. Claude catalog entries disable
+#      it and Pi uses its legacy fine-grained tool-streaming beta instead.
+#
 # NOTE: only pi consumes `api`/`thinkingLevelMap`/`compat`. The opencode
 # renderer below emits name/cost/limit only, so the Claude routing fix is
 # pi-only; opencode still talks to every model over its provider's SDK.
@@ -82,8 +86,9 @@ _pi_models_from_catalog() {
           }
           + (if .api then {api: .api} else {} end)
           + (if .thinkingLevelMap then {thinkingLevelMap: .thinkingLevelMap} else {} end)
+          + (if .compat then {compat: .compat} else {} end)
           + (if (.id | startswith("claude-")) and (.api != "anthropic-messages")
-             then {compat: {cacheControlFormat: "anthropic"}} else {} end)
+             then {compat: (.compat // {}) + {cacheControlFormat: "anthropic"}} else {} end)
         ]' "${MODEL_CATALOG}" 2>/dev/null
 }
 
