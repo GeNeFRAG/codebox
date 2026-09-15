@@ -765,7 +765,7 @@ Unlike the `CODEBOX_*` runtime variables, these are Docker build args — they o
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `CODEBOX_VERSION` | `latest` | `opencode-ai` version pin |
-| `PI_VERSION` | `latest` | `@earendil-works/pi-coding-agent` version pin |
+| `PI_VERSION` | `0.85.1` | Exact `@earendil-works/pi-coding-agent` version. Upgrade deliberately and run `./scripts/verify-pi-extensions.sh` in the rebuilt container. |
 
 Playwright used to be a build arg here. It isn't any more — see below.
 

@@ -24,7 +24,7 @@ x-codebox-common: &codebox-common
     dockerfile: ${DOCKERFILE:-Dockerfile}
     args:
       CODEBOX_VERSION: ${CODEBOX_VERSION:-latest}
-      PI_VERSION: ${PI_VERSION:-latest}
+      PI_VERSION: ${PI_VERSION:-0.85.1}
     additional_contexts:
       atl: ${ATL_SRC_PATH:-.docker/empty-dir}
     secrets:

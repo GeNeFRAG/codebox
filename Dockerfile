@@ -34,9 +34,10 @@ ARG CLAUDE_CODE_VERSION=latest
 ARG CACHEBUST_CLAUDE_CODE=0
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# Install Pi coding agent globally
+# Install Pi coding agent globally. Pin exactly: CodeBox extensions are tested
+# against this Pi API, so upgrades must be deliberate and verified.
 # --ignore-scripts is what pi.dev's own install docs specify.
-ARG PI_VERSION=latest
+ARG PI_VERSION=0.85.1
 ARG CACHEBUST_PI=0
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
 
