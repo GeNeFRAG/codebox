@@ -37,6 +37,10 @@ _generate_ttyd_index() {
     #    (ESC [ 27 ; mod ; 13 ~), which tmux 3.3a parses and forwards
     #    when `extended-keys on` is set (see tmux/tmux.conf).
     #    Alt-Enter is left alone — xterm.js already sends ESC CR.
+    #
+    # ttyd owns WebSocket reconnect handling. _serve_ttyd_loop passes its
+    # supported `reconnect` client option instead of relying on its private
+    # JavaScript implementation details.
     cat >> "${_TTYD_INDEX}" <<'PATCH'
 <style>body,#terminal-container{background:#000!important}#terminal-container .terminal{padding:0!important;height:100%!important}</style>
 <script>
@@ -83,6 +87,13 @@ _serve_ttyd_loop() {
     if [ "$(cat /tmp/.tmux-theme 2>/dev/null)" = "light" ]; then
         _theme_bg="#d5d6db"
     fi
+    # ttyd performs the client reconnect. Its default is disabled, which
+    # leaves a disconnected terminal waiting for the user to press Enter.
+    # Keep the value as a ttyd boolean string rather than evaluating it in
+    # shell; ttyd validates and applies it to its browser client.
+    local _ws_reconnect="${CODEBOX_WS_RECONNECT:-true}"
+    # WebSocket ping interval (default: 10s, configurable via CODEBOX_PING_INTERVAL).
+    local _ping_interval="${CODEBOX_PING_INTERVAL:-10}"
     local _fail_count=0
     while true; do
         if [ ! -x "${wrapper_path}" ]; then
@@ -94,6 +105,8 @@ _serve_ttyd_loop() {
             --port "${CODEBOX_PORT:-3000}" \
             --interface 0.0.0.0 \
             --writable \
+            --ping-interval "${_ping_interval}" \
+            -t reconnect="${_ws_reconnect}" \
             ${_index_flag} \
             ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (${mode_label})}" \
