@@ -289,11 +289,14 @@ COPY templates/oh-my-opencode-slim.json.template /root/.config/opencode/oh-my-op
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY bin/mcp-run /usr/local/bin/mcp-run
 COPY bin/websearch-mcp.js /opt/opencode/bin/websearch-mcp.js
+COPY bin/rbi-bridge-client /usr/local/bin/rbi-sl-token
 COPY lib/ /opt/opencode/lib/
 COPY templates/ /opt/opencode/templates/
 COPY proxy/prefill-proxy.mjs /opt/opencode/proxy/prefill-proxy.mjs
+COPY proxy/gateway-auth-proxy.mjs /opt/opencode/proxy/gateway-auth-proxy.mjs
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     /usr/local/bin/mcp-run \
+    /usr/local/bin/rbi-sl-token \
     && find /opt/opencode/tmux -name '*.sh' -exec chmod +x {} +
 
 # Port is set at runtime via CODEBOX_PORT (default 3000)

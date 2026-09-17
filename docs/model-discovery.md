@@ -6,7 +6,7 @@ CodeBox can discover available models from your LLM gateway and automatically fi
 
 When `LLM_BASE_URL` is set, CodeBox:
 
-1. **Discovers** available models by calling `${LLM_BASE_URL}/v1/models`
+1. **Discovers** available models by calling `${LLM_BASE_URL}/v1/models`; when `CODEBOX_GATEWAY_AUTH_PROXY=true`, startup brings up the local auth proxy first and discovery calls its `/v1/models` endpoint instead, using the helper's rotating credential.
 2. **Filters** the catalog (`templates/model-catalog.json`) to only include models that exist in both the catalog AND the gateway's response
 3. **Overlays** catalog metadata (limits, pricing, protocol) onto the discovered models
 4. **Caches** the discovery result to avoid hammering the gateway on every restart
@@ -178,14 +178,18 @@ To fix a broken subagent model pin:
 
 **Causes**:
 - Gateway is down or unreachable
-- `LLM_API_KEY` is invalid
+- `LLM_API_KEY` is invalid (when gateway-auth proxy is disabled)
+- The gateway-auth helper/bridge cannot obtain a token (when `CODEBOX_GATEWAY_AUTH_PROXY=true`)
 - Network issues (firewall, proxy, DNS)
 - Timeout too short for slow gateway
 
 **Solutions**:
 ```bash
-# Test discovery manually
+# Test discovery manually (direct gateway)
 curl -H "Authorization: Bearer $LLM_API_KEY" "$LLM_BASE_URL/v1/models"
+
+# With CODEBOX_GATEWAY_AUTH_PROXY=true, test through its local listener
+curl "${LLM_GATEWAY_AUTH_URL:-http://127.0.0.1:18081}/v1/models"
 
 # Increase timeout
 export CODEBOX_MODEL_DISCOVERY_TIMEOUT=30

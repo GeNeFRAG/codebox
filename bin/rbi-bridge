@@ -1,0 +1,217 @@
+#!/bin/bash
+# ═══════════════════════════════════════════════════════════════════
+# rbi-bridge — Host-side RBI token bridge for macOS Docker Desktop
+# ═══════════════════════════════════════════════════════════════════
+# Runs on macOS host and provides a simple HTTP bridge to the host's
+# rbi-sl-token helper. The container can then invoke this bridge via
+# host.docker.internal to get tokens without running rbi-sl-token
+# inside the Linux container.
+#
+# Usage:
+#   ./bin/rbi-bridge start [port]
+#   ./bin/rbi-bridge stop
+#   ./bin/rbi-bridge status
+#
+# The bridge listens on 127.0.0.1 (localhost only) and invokes
+# rbi-sl-token when hit. Output is passed through unchanged (supports
+# both plain token and JSON formats).
+
+set -euo pipefail
+
+# Resolve repository root to make state files repo-relative, not CWD-relative
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# State files are repo-relative so they persist across codebox.sh invocations
+BRIDGE_PID_FILE="${REPO_ROOT}/.docker/rbi-bridge.pid"
+BRIDGE_LOG_FILE="${REPO_ROOT}/.docker/rbi-bridge.log"
+
+_detect_platform() {
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        echo "Error: RBI bridge is only supported on macOS" >&2
+        return 1
+    fi
+}
+
+_check_rbi_helper() {
+    if ! command -v rbi-sl-token &>/dev/null; then
+        echo "Error: rbi-sl-token not found in PATH" >&2
+        echo "Install rbi-sl-token on the macOS host first" >&2
+        return 1
+    fi
+}
+
+_start_bridge() {
+    local port="${1}"
+
+    # Validate port is numeric and in valid range
+    if ! [[ "${port}" =~ ^[0-9]+$ ]] || [ "${port}" -lt 1024 ] || [ "${port}" -gt 65535 ]; then
+        echo "Error: Invalid port '${port}' (must be 1024-65535)" >&2
+        return 1
+    fi
+
+    _detect_platform || return 1
+    _check_rbi_helper || return 1
+
+    if [[ -f "${BRIDGE_PID_FILE}" ]]; then
+        local old_pid
+        old_pid=$(cat "${BRIDGE_PID_FILE}")
+        if kill -0 "${old_pid}" 2>/dev/null; then
+            echo "Bridge already running (PID ${old_pid})"
+            return 0
+        else
+            rm -f "${BRIDGE_PID_FILE}"
+        fi
+    fi
+
+    # Check if port is already in use
+    if lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "Error: Port ${port} already in use" >&2
+        return 1
+    fi
+
+    mkdir -p "${REPO_ROOT}/.docker"
+
+    # Start a simple Python HTTP server that invokes rbi-sl-token
+    # Python is available on all macOS systems
+    # Port is passed via CODEBOX_RBI_BRIDGE_PORT env var
+    cat > "${REPO_ROOT}/.docker/rbi-bridge-server.py" <<'EOF'
+#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class RBIBridgeHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        """Handle GET request by invoking rbi-sl-token"""
+        if self.path == '/token' or self.path == '/':
+            try:
+                result = subprocess.run(
+                    ['rbi-sl-token'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+
+                if result.returncode == 0:
+                    output = result.stdout.strip()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(output.encode('utf-8'))
+                else:
+                    # Sanitize stderr to prevent sensitive data leakage in logs
+                    error_msg = result.stderr.strip()[:200]
+                    self.send_error(500, f"Helper failed: {error_msg}")
+            except subprocess.TimeoutExpired:
+                self.send_error(504, "Helper timeout")
+            except Exception as e:
+                self.send_error(500, f"Error: {str(e)}")
+        else:
+            self.send_error(404)
+
+    def log_message(self, format, *args):
+        """Log to stderr (captured to log file)"""
+        sys.stderr.write(f"{self.log_date_time_string()} {format % args}\n")
+
+if __name__ == '__main__':
+    port = int(os.getenv('CODEBOX_RBI_BRIDGE_PORT', '8092'))
+    server = HTTPServer(('127.0.0.1', port), RBIBridgeHandler)
+    print(f"RBI bridge listening on 127.0.0.1:{port}", file=sys.stderr)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down...", file=sys.stderr)
+        server.shutdown()
+EOF
+
+    chmod +x "${REPO_ROOT}/.docker/rbi-bridge-server.py"
+
+    # Start bridge in background (port passed via env var)
+    CODEBOX_RBI_BRIDGE_PORT="${port}" python3 "${REPO_ROOT}/.docker/rbi-bridge-server.py" >>"${BRIDGE_LOG_FILE}" 2>&1 &
+    local pid=$!
+    echo "${pid}" > "${BRIDGE_PID_FILE}"
+
+    # Wait for bridge to start
+    sleep 1
+    if kill -0 "${pid}" 2>/dev/null; then
+        echo "RBI bridge started on 127.0.0.1:${port} (PID ${pid})"
+        return 0
+    else
+        rm -f "${BRIDGE_PID_FILE}"
+        echo "Error: Bridge failed to start" >&2
+        if [[ -f "${BRIDGE_LOG_FILE}" ]]; then
+            echo "Check log file: ${BRIDGE_LOG_FILE}" >&2
+            tail -10 "${BRIDGE_LOG_FILE}" >&2
+        fi
+        return 1
+    fi
+}
+
+_stop_bridge() {
+    if [[ ! -f "${BRIDGE_PID_FILE}" ]]; then
+        echo "Bridge not running (no PID file)"
+        return 0
+    fi
+
+    local pid
+    pid=$(cat "${BRIDGE_PID_FILE}")
+
+    if kill -0 "${pid}" 2>/dev/null; then
+        echo "Stopping bridge (PID ${pid})..."
+        kill "${pid}"
+        sleep 1
+        if kill -0 "${pid}" 2>/dev/null; then
+            kill -9 "${pid}" 2>/dev/null || true
+        fi
+        rm -f "${BRIDGE_PID_FILE}"
+        echo "Bridge stopped"
+    else
+        echo "Bridge not running (stale PID file)"
+        rm -f "${BRIDGE_PID_FILE}"
+    fi
+}
+
+_status_bridge() {
+    if [[ ! -f "${BRIDGE_PID_FILE}" ]]; then
+        echo "Bridge: not running"
+        return 1
+    fi
+
+    local pid
+    pid=$(cat "${BRIDGE_PID_FILE}")
+
+    if kill -0 "${pid}" 2>/dev/null; then
+        echo "Bridge: running (PID ${pid})"
+        if [[ -f "${BRIDGE_LOG_FILE}" ]]; then
+            local lines
+            lines=$(wc -l < "${BRIDGE_LOG_FILE}" | tr -d ' ')
+            echo "Log: ${BRIDGE_LOG_FILE} (${lines} lines)"
+        fi
+        return 0
+    else
+        echo "Bridge: not running (stale PID file)"
+        rm -f "${BRIDGE_PID_FILE}"
+        return 1
+    fi
+}
+
+# Main
+case "${1:-}" in
+    start)
+        shift
+        _start_bridge "${1:-8092}"
+        ;;
+    stop)
+        _stop_bridge
+        ;;
+    status)
+        _status_bridge
+        ;;
+    *)
+        echo "Usage: $0 {start [port]|stop|status}" >&2
+        echo "Example: $0 start 8092" >&2
+        exit 1
+        ;;
+esac

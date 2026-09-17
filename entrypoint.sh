@@ -65,19 +65,47 @@ fi
 . "${LIB}/docker-guard.sh"
 _install_docker_guard
 
-# ─── 4. Cleanup on SIGTERM (reap background proxy) ─────────────────
+# ─── 4. Cleanup on SIGTERM (reap background proxies) ───────────────
 # shellcheck source=lib/proxy.sh
 . "${LIB}/proxy.sh"
 _cleanup() {
+    [ -n "${GATEWAY_AUTH_PROXY_PID:-}" ] && kill "${GATEWAY_AUTH_PROXY_PID}" 2>/dev/null
     [ -n "${PROXY_PID:-}" ] && kill "${PROXY_PID}" 2>/dev/null
     exit 0
 }
 trap _cleanup SIGTERM SIGINT
 
-# ─── 5. App-specific configuration ─────────────────────────────────
-echo "── $(_ts) config"
+# ─── 5. Corporate CA certificate ───────────────────────────────────
+# Install before both the gateway-auth proxy and direct model discovery. Node
+# reads NODE_EXTRA_CA_CERTS at process startup, so installing it later would
+# leave the early proxy unable to trust an intercepted gateway certificate.
+# shellcheck source=lib/ca-cert.sh
+. "${LIB}/ca-cert.sh"
+
+# ─── 6. Gateway-auth proxy (all agents, opt-in) ────────────────────
 # shellcheck source=lib/config.sh
 . "${LIB}/config.sh"
+
+# Start before config generation: discovery calls /v1/models and must use the
+# same rotating credential as ordinary agent traffic.
+export GATEWAY_AUTH_PROXY_ENABLED="${CODEBOX_GATEWAY_AUTH_PROXY:-false}"
+if [ "${GATEWAY_AUTH_PROXY_ENABLED}" = "true" ]; then
+    echo "── $(_ts) gateway-auth-proxy"
+    if ! _start_gateway_auth_proxy; then
+        echo "✗ FATAL: Gateway-auth proxy startup failed" >&2
+        echo "  Set CODEBOX_GATEWAY_AUTH_PROXY=false to connect directly" >&2
+        exit 1
+    fi
+fi
+
+# ─── 7. App-specific configuration ─────────────────────────────────
+echo "── $(_ts) config"
+# This is also needed without the proxy, and is idempotent when its live URL
+# was set by _start_gateway_auth_proxy above.
+if ! _compute_gateway_auth_url; then
+    echo "✗ FATAL: Gateway-auth proxy configuration validation failed" >&2
+    exit 1
+fi
 
 case "${CODEBOX_APP}" in
     claude-code)
@@ -105,47 +133,47 @@ case "${CODEBOX_APP}" in
 esac
 _generate_atl_config
 
-# ─── 6. Corporate CA certificate ───────────────────────────────────
-# shellcheck source=lib/ca-cert.sh
-. "${LIB}/ca-cert.sh"
-
-# ─── 7. TLS certificate for ttyd (tui/tmux clipboard support) ──────
+# ─── 8. TLS certificate for ttyd (tui/tmux clipboard support) ──────
 # shellcheck source=lib/tls.sh
 . "${LIB}/tls.sh"
 
-# ─── 8. OpenCode plugins ────────────────────────────────────────────
+# ─── 9. OpenCode plugins ────────────────────────────────────────────
 echo "── $(_ts) plugins"
 # shellcheck source=lib/plugins.sh
 . "${LIB}/plugins.sh"
 
-# ─── 9. System checks (Docker socket, git, workspace symlinks) ──────
+# ─── 10. System checks (Docker socket, git, workspace symlinks) ─────
 echo "── $(_ts) system-checks"
 # shellcheck source=lib/system-checks.sh
 . "${LIB}/system-checks.sh"
 
-# ─── 9b. Playwright browsers (opt-in, per container) ──────────────
+# ─── 10b. Playwright browsers (opt-in, per container) ─────────────
 echo "── $(_ts) playwright"
 # shellcheck source=lib/playwright.sh
 . "${LIB}/playwright.sh"
 _install_playwright
 
-# ─── 10. Prefill proxy (OpenCode only) ─────────────────────────────
+# ─── 11. Prefill proxy (OpenCode only) ─────────────────────────────
+# The gateway-auth proxy started before config generation so model discovery can use its
+# rotating credentials. It remains supervised by the normal web-mode loop.
+
 if [ "${CODEBOX_APP}" = "opencode" ] && [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
+    echo "── $(_ts) prefill-proxy"
     if ! _start_proxy; then
         echo "✗ FATAL: Proxy startup and fallback failed" >&2
         exit 1
     fi
 elif [ "${CODEBOX_APP}" = "opencode" ]; then
-    echo "→ Prefill proxy disabled — connecting directly to ${LLM_BASE_URL}"
+    echo "→ Prefill proxy disabled — connecting directly"
 fi
 echo ""
 
-# ─── 11. Binary resolution, banner, theme, title ──────────────────
+# ─── 12. Binary resolution, banner, theme, title ──────────────────
 echo "── $(_ts) runtime"
 # shellcheck source=lib/runtime.sh
 . "${LIB}/runtime.sh"
 
-# ─── 12. Mode launch (tmux / tui / web) — does not return ─────────
+# ─── 13. Mode launch (tmux / tui / web) — does not return ─────────
 echo "── $(_ts) launching ${CODEBOX_APP:-opencode} (${CODEBOX_MODE:-web})"
 # shellcheck source=lib/modes.sh
 . "${LIB}/modes.sh"

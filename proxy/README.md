@@ -1,6 +1,49 @@
 # proxy/
 
-Contains `prefill-proxy.mjs` — a local HTTP proxy used by OpenCode only.
+Contains two HTTP proxies:
+
+1. **gateway-auth-proxy.mjs** — Rotating token management for all three agents (OpenCode, Claude Code, Pi)
+2. **prefill-proxy.mjs** — Assistant message stripping for OpenCode only
+
+Both can run simultaneously for OpenCode (chain: OpenCode → prefill → gateway-auth → upstream).
+
+---
+
+## Gateway Auth Proxy
+
+Manages rotating bearer tokens from `rbi-sl-token` helper (or similar) for LLM Gateway authentication.
+
+### What it does
+
+- **Token acquisition**: Invokes helper command to get fresh JWT tokens
+- **Caching**: Stores tokens in memory with TTL derived from JWT `exp` field
+- **Auth retry**: Detects 401/403 responses, refreshes token, retries request once
+- **Fallback**: Uses static `LLM_API_KEY` if helper unavailable
+- **Universal**: Works for all three agents (OpenCode, Claude Code, Pi)
+
+### Configuration
+
+Add to `.env`:
+```bash
+CODEBOX_GATEWAY_AUTH_PROXY=true
+CODEBOX_GATEWAY_AUTH_HELPER=rbi-sl-token  # default
+CODEBOX_GATEWAY_AUTH_CACHE_TTL=3300       # 55 min, default
+CODEBOX_GATEWAY_AUTH_PORT=18081           # default
+```
+
+See full documentation: [docs/gateway-auth-proxy.md](../docs/gateway-auth-proxy.md)
+
+### Architecture
+
+- Listens on `http://127.0.0.1:18081` inside the container
+- Replaces `Authorization` header with token from helper or static key
+- Does NOT modify request/response bodies
+- Connection pooling (keep-alive, maxSockets=16)
+- Request timeout: 120s (configurable via `CODEBOX_GATEWAY_AUTH_TIMEOUT`)
+
+---
+
+## Prefill Proxy
 
 ## What it does
 

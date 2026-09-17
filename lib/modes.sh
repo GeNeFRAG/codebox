@@ -249,7 +249,7 @@ else
         echo "  ⟳ opencode web exited (rc=${_rc}). Restart #${_fail_count} in ${_sleep}s..."
         echo ""
 
-        _restart_proxy
+        _restart_both_proxies
         sleep "${_sleep}"
     done
 fi

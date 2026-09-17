@@ -20,6 +20,9 @@
 
 set -uo pipefail
 
+# Ensure hermetic test environment - unset variables that would affect behavior
+unset LLM_GATEWAY_AUTH_URL 2>/dev/null || true
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "${ROOT}/lib/config.sh"
 

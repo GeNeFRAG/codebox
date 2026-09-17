@@ -20,6 +20,11 @@ opencode-docker/
 # mkcert CA root (generated at first TLS startup)
 .docker/mkcert-ca/
 
+# RBI bridge state (macOS only)
+.docker/rbi-bridge.pid
+.docker/rbi-bridge.log
+.docker/rbi-bridge-server.py
+
 # OS
 .DS_Store
 

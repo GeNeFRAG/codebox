@@ -30,6 +30,28 @@ _is_true() {
     [ "${1:-}" = "true" ] || [ "${1:-}" = "1" ]
 }
 
+# ─── Gateway-auth proxy URL computation ─────────────────────────────
+# Pre-computes and exports LLM_GATEWAY_AUTH_URL once before dispatching
+# to agent-specific config generation. All three agents need this exact
+# same logic, so it's extracted here to avoid duplication.
+# Called in phase 5 (config generation) by _generate_config() wrapper.
+_compute_gateway_auth_url() {
+    # Gateway-auth proxy is only meaningful when there's a gateway to proxy
+    if [ "${CODEBOX_GATEWAY_AUTH_PROXY:-false}" = "true" ]; then
+        # Validate LLM_BASE_URL is set (fail early, before config generation)
+        # If we're here with gateway-auth enabled but no base URL, the agent
+        # configs will have empty LLM_EFFECTIVE_URL and fail at runtime anyway.
+        # Catching it now gives a clearer error message.
+        if [ -z "${LLM_BASE_URL:-}" ]; then
+            echo "  ✗ FATAL: CODEBOX_GATEWAY_AUTH_PROXY=true requires LLM_BASE_URL" >&2
+            return 1
+        fi
+
+        export LLM_GATEWAY_AUTH_URL="http://127.0.0.1:${CODEBOX_GATEWAY_AUTH_PORT:-18081}"
+    fi
+    return 0
+}
+
 # ─── Gateway model discovery and filtering ──────────────────────
 # When LLM_BASE_URL is set, discover available models from /v1/models and
 # filter the catalog to only include models the gateway actually supports.
@@ -92,11 +114,23 @@ _write_model_cache() {
     fi
 }
 
-# Discovers available models from gateway /v1/models endpoint
-# Returns JSON array of model IDs, or empty string on failure
+# Discovers available models from gateway /v1/models endpoint.
+# Returns JSON array of model IDs, or empty string on failure. When the
+# gateway-auth proxy is already running, use it so discovery gets the same
+# rotating-helper credentials as agent traffic. GATEWAY_AUTH_PROXY_READY is
+# deliberately separate from the configured URL: config helpers and tests may
+# know the deterministic proxy URL before there is a listener.
 _discover_gateway_models() {
     [ -z "${LLM_BASE_URL:-}" ] && return 1
-    [ -z "${LLM_API_KEY:-}" ] && return 1
+
+    local use_gateway_auth_proxy=false
+    if _is_true "${GATEWAY_AUTH_PROXY_READY:-false}" && [ -n "${LLM_GATEWAY_AUTH_URL:-}" ]; then
+        use_gateway_auth_proxy=true
+    elif [ -z "${LLM_API_KEY:-}" ]; then
+        # A direct discovery request needs a static credential. The running
+        # gateway-auth proxy can instead obtain one from its token helper.
+        return 1
+    fi
 
     # Check cache first
     local cached
@@ -108,14 +142,21 @@ _discover_gateway_models() {
     # Discover from gateway
     local timeout="${CODEBOX_MODEL_DISCOVERY_TIMEOUT:-10}"
 
-    # Strip trailing slash from base URL to avoid double slashes
-    local base_url="${LLM_BASE_URL%/}"
+    local discovery_url
+    local -a curl_args=(curl -sf --max-time "${timeout}")
+    if [ "${use_gateway_auth_proxy}" = "true" ]; then
+        # The proxy overwrites Authorization with the rotating helper token.
+        # Do not send LLM_API_KEY to localhost needlessly.
+        discovery_url="${LLM_GATEWAY_AUTH_URL%/}"
+        echo "  → Gateway model discovery via gateway-auth proxy" >&2
+    else
+        discovery_url="${LLM_BASE_URL%/}"
+        curl_args+=(-H "Authorization: Bearer ${LLM_API_KEY}")
+    fi
 
     local response
     local curl_err
-    response=$(curl -sf --max-time "${timeout}" \
-        -H "Authorization: Bearer ${LLM_API_KEY}" \
-        --url "${base_url}/v1/models" 2>&1) || curl_err=$?
+    response=$("${curl_args[@]}" --url "${discovery_url}/v1/models" 2>&1) || curl_err=$?
 
     if [ -z "${response}" ] || [ -n "${curl_err:-}" ]; then
         return 1
@@ -542,6 +583,7 @@ _generate_mcp_server_config() {
 
 # ─── Claude Code config generation ──────────────────────────────────
 _generate_claude_code_config() {
+    # Gateway-auth proxy URL already computed by _compute_gateway_auth_url() in phase 5
     local settings_dir="/root/.claude"
     local mcp_config="${settings_dir}/claude-code-mcp.json"
     local settings_file="${settings_dir}/settings.json"
@@ -579,11 +621,16 @@ _generate_claude_code_config() {
         echo "    Note: OAuth login does NOT work in headless Docker"
     fi
 
-    # 4. Map custom endpoint: ANTHROPIC_BASE_URL from env, fallback to LLM_BASE_URL
-    if [ -z "${ANTHROPIC_BASE_URL:-}" ] && [ -n "${LLM_BASE_URL:-}" ]; then
-        export ANTHROPIC_BASE_URL="${LLM_BASE_URL}"
-        echo "  ✓ Mapped LLM_BASE_URL → ANTHROPIC_BASE_URL (${ANTHROPIC_BASE_URL})"
-    elif [ -n "${ANTHROPIC_BASE_URL:-}" ]; then
+    # 4. Map custom endpoint: prefer gateway-auth proxy URL, then LLM_BASE_URL
+    if [ -z "${ANTHROPIC_BASE_URL:-}" ]; then
+        if [ -n "${LLM_GATEWAY_AUTH_URL:-}" ]; then
+            export ANTHROPIC_BASE_URL="${LLM_GATEWAY_AUTH_URL}"
+            echo "  ✓ Mapped LLM_GATEWAY_AUTH_URL → ANTHROPIC_BASE_URL (gateway-auth proxy)"
+        elif [ -n "${LLM_BASE_URL:-}" ]; then
+            export ANTHROPIC_BASE_URL="${LLM_BASE_URL}"
+            echo "  ✓ Mapped LLM_BASE_URL → ANTHROPIC_BASE_URL (${ANTHROPIC_BASE_URL})"
+        fi
+    else
         echo "  ✓ ANTHROPIC_BASE_URL configured (${ANTHROPIC_BASE_URL})"
     fi
 
@@ -744,13 +791,33 @@ _report_plugin_model_status() {
 _configure_opencode() {
     echo "→ Generating opencode.json from template..."
 
-    # Determine the effective LLM URL based on whether the prefill proxy is enabled.
-    # The proxy hasn't started yet, but the URL is deterministic — we'll verify later.
+    # Gateway-auth proxy URL already computed by _compute_gateway_auth_url() in phase 5.
+    # Now determine the effective LLM URL based on proxy configuration.
+    # Gateway-auth proxy (if enabled) is always the outermost layer.
     PREFILL_PROXY_ENABLED="${OPENCODE_PREFILL_PROXY:-false}"
-    if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
-        export LLM_EFFECTIVE_URL="http://127.0.0.1:18080"
+
+    if [ -n "${LLM_GATEWAY_AUTH_URL:-}" ]; then
+        # Gateway-auth proxy is running
+        if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
+            # Both proxies: OpenCode → prefill → gateway-auth → upstream
+            export LLM_EFFECTIVE_URL="http://127.0.0.1:18080"
+            echo "  → Routing: OpenCode → prefill (18080) → gateway-auth (${LLM_GATEWAY_AUTH_URL}) → ${LLM_BASE_URL}"
+        else
+            # Gateway-auth only: OpenCode → gateway-auth → upstream
+            export LLM_EFFECTIVE_URL="${LLM_GATEWAY_AUTH_URL}"
+            echo "  → Routing: OpenCode → gateway-auth (${LLM_GATEWAY_AUTH_URL}) → ${LLM_BASE_URL}"
+        fi
     else
-        export LLM_EFFECTIVE_URL="${LLM_BASE_URL}"
+        # No gateway-auth proxy
+        if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
+            # Prefill only: OpenCode → prefill → upstream
+            export LLM_EFFECTIVE_URL="http://127.0.0.1:18080"
+            echo "  → Routing: OpenCode → prefill (18080) → ${LLM_BASE_URL}"
+        else
+            # Direct: OpenCode → upstream
+            export LLM_EFFECTIVE_URL="${LLM_BASE_URL}"
+            echo "  → Routing: OpenCode → ${LLM_BASE_URL}"
+        fi
     fi
 
     # Default TUI theme if not set (OpenCode built-in themes: opencode,
@@ -1014,6 +1081,8 @@ _pi_extensions() {
 _configure_pi() {
     echo "→ Generating Pi config..."
 
+    # Gateway-auth proxy URL already computed by _compute_gateway_auth_url() in phase 5.
+
     # 1. Pin the config dir so every Pi invocation (including tmux
     #    respawns, which re-exec the binary) agrees on where it lives.
     export PI_CODING_AGENT_DIR="${PI_CONFIG_DIR}"
@@ -1040,7 +1109,16 @@ _configure_pi() {
     #    write an auth.json for Pi — the docs warn against configuring a
     #    credential in both auth.json and models.json for the same
     #    provider, and this env-interpolation route already covers it.
-    if [ -n "${LLM_BASE_URL:-}" ]; then
+    #
+    #    When gateway-auth proxy is enabled, point baseUrl at it instead
+    #    of LLM_BASE_URL. The proxy will inject the real token from
+    #    rbi-sl-token (or fall back to $LLM_API_KEY if helper unavailable).
+    local _effective_base_url="${LLM_BASE_URL:-}"
+    if [ -n "${LLM_GATEWAY_AUTH_URL:-}" ]; then
+        _effective_base_url="${LLM_GATEWAY_AUTH_URL}"
+    fi
+
+    if [ -n "${_effective_base_url}" ]; then
         if grep -qE " ${models_file}( |$)" /proc/self/mountinfo 2>/dev/null; then
             echo "  → models.json is bind-mounted — leaving user config in place"
         else
@@ -1097,7 +1175,7 @@ _configure_pi() {
             # Write via temp file: a failed jq must not leave a truncated
             # models.json behind, and must not claim defaultProvider=llm in
             # settings.json for a provider that never got written.
-            if jq -n --arg baseUrl "${LLM_BASE_URL}" --arg api "${_pi_api}" \
+            if jq -n --arg baseUrl "${_effective_base_url}" --arg api "${_pi_api}" \
                 --arg apiKey '$LLM_API_KEY' --argjson models "${_models_json}" '{
                 providers: {
                     llm: {
@@ -1111,7 +1189,12 @@ _configure_pi() {
             }' > "${models_file}.tmp" && [ -s "${models_file}.tmp" ]; then
                 mv "${models_file}.tmp" "${models_file}"
                 chmod 600 "${models_file}"
-                echo "  ✓ models.json written (${LLM_BASE_URL}, default api=${_pi_api})"
+                if [ -n "${LLM_GATEWAY_AUTH_URL:-}" ]; then
+                    echo "  ✓ models.json written, routing: Pi → gateway-auth (${LLM_GATEWAY_AUTH_URL}) → ${LLM_BASE_URL}"
+                    echo "    Default api=${_pi_api} (gateway-auth will inject real token from rbi-sl-token or \$LLM_API_KEY)"
+                else
+                    echo "  ✓ models.json written (${LLM_BASE_URL}, default api=${_pi_api})"
+                fi
                 _models_written="true"
             else
                 rm -f "${models_file}.tmp"
@@ -1120,7 +1203,7 @@ _configure_pi() {
             fi
         fi
     else
-        echo "  → models.json skipped (LLM_BASE_URL not set)"
+        echo "  → models.json skipped (no gateway URL configured)"
     fi
 
     # 4. Resolve extensions before settings.json is written — their paths

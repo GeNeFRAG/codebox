@@ -1,11 +1,122 @@
 # ─── lib/proxy.sh ───────────────────────────────────────────────────────────
-# Manages the prefill proxy (OpenCode only).
+# Manages both proxies:
+#   - gateway-auth proxy: rotating token management (all agents)
+#   - prefill proxy: assistant message stripping (OpenCode only)
+#
+# Gateway-auth proxy lifecycle:
+#   - _start_gateway_auth_proxy: validates helper, launches proxy
+#   - _restart_gateway_auth_proxy: keeps proxy alive in web mode
+#
+# Prefill proxy lifecycle:
 #   - _start_proxy: launches the proxy, polls for readiness, warms TLS
-#   - _restart_proxy: called from the web-mode restart loop to ensure the
-#     proxy is still alive between opencode restarts
+#   - _restart_proxy: called from the web-mode restart loop
+
+# ─── Gateway Auth Proxy ────────────────────────────────────────────
+
+_validate_gateway_auth_helper() {
+    local helper="${CODEBOX_GATEWAY_AUTH_HELPER:-rbi-sl-token}"
+    local helper_path
+    helper_path=$(command -v "${helper}" 2>/dev/null || true)
+
+    if [ -z "${helper_path}" ]; then
+        echo "  ✗ Token helper not found: ${helper}" >&2
+        if [ -z "${LLM_API_KEY:-}" ]; then
+            echo "  ✗ FATAL: No static LLM_API_KEY available as fallback" >&2
+            return 1
+        fi
+        echo "  ⚠ Will fall back to static LLM_API_KEY"
+    elif [ ! -x "${helper_path}" ]; then
+        echo "  ✗ Token helper not executable: ${helper_path}" >&2
+        if [ -z "${LLM_API_KEY:-}" ]; then
+            echo "  ✗ FATAL: No static LLM_API_KEY available as fallback" >&2
+            return 1
+        fi
+        echo "  ⚠ Will fall back to static LLM_API_KEY"
+    else
+        echo "  ✓ Token helper found: ${helper}"
+    fi
+    return 0
+}
+
+_spawn_gateway_auth_proxy() {
+    UPSTREAM_URL="${LLM_BASE_URL}" \
+    CODEBOX_GATEWAY_AUTH_PORT="${CODEBOX_GATEWAY_AUTH_PORT:-18081}" \
+    CODEBOX_GATEWAY_AUTH_TIMEOUT="${CODEBOX_GATEWAY_AUTH_TIMEOUT:-120}" \
+    CODEBOX_GATEWAY_AUTH_HELPER="${CODEBOX_GATEWAY_AUTH_HELPER:-rbi-sl-token}" \
+    CODEBOX_GATEWAY_AUTH_CACHE_TTL="${CODEBOX_GATEWAY_AUTH_CACHE_TTL:-3300}" \
+    CODEBOX_GATEWAY_AUTH_LOG_LEVEL="${CODEBOX_GATEWAY_AUTH_LOG_LEVEL:-info}" \
+        node /opt/opencode/proxy/gateway-auth-proxy.mjs &
+    GATEWAY_AUTH_PROXY_PID=$!
+}
+
+_start_gateway_auth_proxy() {
+    echo "→ Starting gateway-auth proxy on 127.0.0.1:${CODEBOX_GATEWAY_AUTH_PORT:-18081} → ${LLM_BASE_URL}..."
+
+    # Validate helper availability
+    if ! _validate_gateway_auth_helper; then
+        return 1
+    fi
+
+    _spawn_gateway_auth_proxy
+
+    # Poll for readiness (TCP connect check)
+    local _ready=false
+    local _port="${CODEBOX_GATEWAY_AUTH_PORT:-18081}"
+    for _i in $(seq 1 25); do
+        if ! kill -0 "${GATEWAY_AUTH_PROXY_PID}" 2>/dev/null; then
+            break  # process died
+        fi
+        if (exec 3<>/dev/tcp/127.0.0.1/"${_port}") 2>/dev/null; then
+            _ready=true
+            break
+        fi
+        sleep 0.2
+    done
+
+    if [ "${_ready}" = "true" ]; then
+        echo "  ✓ Gateway-auth proxy running (PID ${GATEWAY_AUTH_PROXY_PID})"
+        # Set effective URL for all agents and distinguish a live listener
+        # from the deterministic URL precomputed during config generation.
+        export LLM_GATEWAY_AUTH_URL="http://127.0.0.1:${_port}"
+        export GATEWAY_AUTH_PROXY_READY=true
+        return 0
+    else
+        echo "  ✗ Gateway-auth proxy failed to start" >&2
+        unset GATEWAY_AUTH_PROXY_PID
+        unset GATEWAY_AUTH_PROXY_READY
+        return 1
+    fi
+}
+
+_restart_gateway_auth_proxy() {
+    local _port="${CODEBOX_GATEWAY_AUTH_PORT:-18081}"
+    if [ -z "${GATEWAY_AUTH_PROXY_PID:-}" ] || ! kill -0 "${GATEWAY_AUTH_PROXY_PID}" 2>/dev/null; then
+        echo "  ⟳ Gateway-auth proxy not running — restarting..."
+        _spawn_gateway_auth_proxy
+        sleep 1
+        if kill -0 "${GATEWAY_AUTH_PROXY_PID}" 2>/dev/null; then
+            echo "  ✓ Gateway-auth proxy restarted (PID ${GATEWAY_AUTH_PROXY_PID})"
+            export LLM_GATEWAY_AUTH_URL="http://127.0.0.1:${_port}"
+            export GATEWAY_AUTH_PROXY_READY=true
+        else
+            echo "  ✗ Gateway-auth proxy failed to restart"
+            unset GATEWAY_AUTH_PROXY_PID
+            unset GATEWAY_AUTH_PROXY_READY
+        fi
+    fi
+}
+
+# ─── Prefill Proxy (OpenCode only) ──────────────────────────────────
 
 _spawn_proxy() {
-    UPSTREAM_URL="${LLM_BASE_URL}" PROXY_PORT=18080 \
+    # When gateway-auth proxy is enabled, prefill forwards to it instead of LLM_BASE_URL
+    local upstream="${LLM_BASE_URL}"
+    if [ -n "${LLM_GATEWAY_AUTH_URL:-}" ]; then
+        upstream="${LLM_GATEWAY_AUTH_URL}"
+        echo "  → Prefill proxy will forward to gateway-auth proxy"
+    fi
+
+    UPSTREAM_URL="${upstream}" PROXY_PORT=18080 \
         node /opt/opencode/proxy/prefill-proxy.mjs &
     PROXY_PID=$!
 }
@@ -54,7 +165,7 @@ _start_proxy() {
     fi
 }
 
-# ── Proxy liveness helper (web mode only) ─────────────────────────
+# ── Proxy liveness helpers (web mode only) ────────────────────────
 _restart_proxy() {
     if [ "${PREFILL_PROXY_ENABLED}" = "true" ]; then
         if [ -z "${PROXY_PID:-}" ] || ! kill -0 "${PROXY_PID}" 2>/dev/null; then
@@ -69,4 +180,12 @@ _restart_proxy() {
             fi
         fi
     fi
+}
+
+# Called from modes.sh web-mode restart loop
+_restart_both_proxies() {
+    if [ "${GATEWAY_AUTH_PROXY_ENABLED:-false}" = "true" ]; then
+        _restart_gateway_auth_proxy
+    fi
+    _restart_proxy
 }

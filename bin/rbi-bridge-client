@@ -1,0 +1,38 @@
+#!/bin/bash
+# ═══════════════════════════════════════════════════════════════════
+# rbi-bridge-client — Container-side wrapper for RBI bridge
+# ═══════════════════════════════════════════════════════════════════
+# Invokes the host-side RBI bridge via Docker Desktop's
+# host.docker.internal networking. This script is installed in the
+# container at /usr/local/bin/rbi-sl-token and called by the
+# gateway-auth proxy.
+#
+# The bridge must be running on the host before the container starts.
+# codebox.sh manages the bridge lifecycle automatically.
+
+set -euo pipefail
+
+BRIDGE_HOST="${CODEBOX_RBI_BRIDGE_HOST:-host.docker.internal}"
+BRIDGE_PORT="${CODEBOX_RBI_BRIDGE_PORT:-8092}"
+
+# Invoke bridge with a short timeout
+# The bridge invokes rbi-sl-token with its own 10s timeout, so we use 15s here
+if ! response=$(curl -sf --max-time 15 "http://${BRIDGE_HOST}:${BRIDGE_PORT}/token" 2>&1); then
+    # Distinguish between bridge unreachable (network error) vs bridge returned HTTP error
+    if [[ "${response}" == *"Could not resolve host"* ]]; then
+        echo "Error: RBI bridge unavailable at ${BRIDGE_HOST}:${BRIDGE_PORT}" >&2
+        echo "Docker Desktop host.docker.internal not available" >&2
+        echo "Ensure Docker Desktop is running" >&2
+    elif [[ "${response}" == *"Connection refused"* ]]; then
+        echo "Error: RBI bridge unavailable at ${BRIDGE_HOST}:${BRIDGE_PORT}" >&2
+        echo "Bridge not running on host - check: ./bin/rbi-bridge status" >&2
+    else
+        # HTTP error response (4xx/5xx) from bridge
+        echo "Error: RBI bridge returned error: ${response}" >&2
+    fi
+    exit 1
+fi
+
+# Output token (proxy expects it on stdout)
+echo "${response}"
+exit 0

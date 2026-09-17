@@ -12,7 +12,9 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `lib/ca-cert.sh` | Corporate CA certificate installation into system store |
 | `lib/plugins.sh` | OpenCode npm plugin installation (oh-my-opencode-slim) |
 | `lib/system-checks.sh` | Docker socket check, git safe.directory, workspace symlink, git credentials/work config validation |
-| `lib/proxy.sh` | Prefill proxy start/stop helpers (OpenCode only) |
+| `lib/proxy.sh` | Proxy lifecycle management: gateway-auth proxy (all agents, rotating tokens from rbi-sl-token) and prefill proxy (OpenCode only, assistant message stripping) |
+| `bin/rbi-bridge` | macOS host-side RBI token bridge server (Python HTTP) — invokes host's rbi-sl-token and serves tokens to container via host.docker.internal. Automatically managed by codebox.sh when `CODEBOX_RBI_BRIDGE_ENABLE=true`. See `docs/rbi-bridge-macos.md` |
+| `bin/rbi-bridge-client` | Container-side wrapper installed at `/usr/local/bin/rbi-sl-token` — makes HTTP calls to the host bridge, used by gateway-auth-proxy.mjs |
 | `lib/runtime.sh` | Binary resolution (`APP_BIN`), startup banner, theme initialization, browser tab title derivation |
 | `lib/modes.sh` | Mode launch: `web` / `tui` / `tmux` restart loops |
 | `templates/opencode.json.template` | OpenCode config — MCP servers, permissions, provider endpoints. Its `provider.llm.models` block is only a readable **snapshot**: `lib/config.sh` overwrites it from `templates/model-catalog.json` on every boot |
@@ -22,7 +24,11 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `scripts/verify-plugin-models.sh` | Validates that all model references in `templates/oh-my-opencode-slim.json.template` exist in `model-catalog.json` (static check, catches typos) |
 | `scripts/test-model-discovery.sh` | Automated test suite for gateway model discovery and filtering (cache behavior, filtering logic, catalog transforms) |
 | `scripts/test-plugin-model-validation.sh` | Automated test suite for oh-my-opencode-slim model reference validation (extraction, validation, strict mode, gateway filtering) |
+| `scripts/test-gateway-auth-proxy.sh` | Automated test suite for gateway-auth proxy (token caching, helper invocation, lifecycle integration) |
+| `scripts/test-gateway-auth-integration.sh` | Integration test for gateway-auth proxy with mock helper and upstream server |
 | `docs/model-discovery.md` | Full documentation of the gateway model discovery system: how it works, configuration, troubleshooting, testing |
+| `docs/gateway-auth-proxy.md` | Gateway-auth proxy documentation: architecture, token management, configuration, JSON output format, safe header filtering, coexistence with prefill proxy |
+| `docs/rbi-bridge-macos.md` | macOS RBI bridge documentation: architecture, requirements, configuration, troubleshooting, security notes, comparison to in-container approach |
 | `templates/mcp-servers/*.json` | Individual MCP server definitions, assembled at runtime by `_generate_mcp_server_config` into `/root/.claude/claude-code-mcp.json` (Claude Code) and `/root/.pi/agent/mcp-servers.json` (Pi, consumed by `lib/pi-ext/codebox-mcp.ts`); gated by `CODEBOX_MCP_*` env vars |
 | `lib/playwright.sh` | On-demand Playwright browser download at startup, gated by `CODEBOX_PLAYWRIGHT` (not baked into the image) |
 | `skills/*/SKILL.md` | Agent skills baked to `/root/.agents/skills/` — currently `atl` (Jira/Confluence/Zephyr). Cheaper than the equivalent MCP server (prompt text, not 20+ tool schemas), so prefer a skill where one exists. Mounted **one line per skill** in the dev block, never as a whole directory: `/root/.agents/skills/` also holds `agent-browser` and `simplify` from `npx skills add`, which a directory mount would shadow away |
@@ -33,9 +39,10 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 | `lib/docker-guard.sh` | Installs the `docker` guard shim on `PATH` (and in `/root/.{bashrc,zshrc}`), resolves `CODEBOX_COMPOSE_PROJECT`, writes the `/run/codebox-container` marker |
 | `lib/guard-bin/docker` | `PATH` shim in front of `/usr/local/bin/docker` — refuses commands that would stop/remove/recreate this container or its Compose siblings |
 | `templates/oh-my-opencode-slim.json.template` | Agent preset — which model/skills/MCPs each agent role uses; each role's `model` accepts an array `[primary, ...fallbacks]`. Copied to `/root/.config/opencode/oh-my-opencode-slim.json` at container startup by `lib/config.sh`, which also validates that all model references exist in `model-catalog.json` (see `docs/plugin-model-validation.md`) |
+| `proxy/gateway-auth-proxy.mjs` | Rotating bearer token proxy for LLM Gateway auth, used by all three agents. Invokes `rbi-sl-token` helper (supports plain token or JSON with headers), caches tokens, retries on auth failure, falls back to static `LLM_API_KEY`. Safe header filtering (blocks authorization/host/content-*). See `docs/gateway-auth-proxy.md` |
 | `proxy/prefill-proxy.mjs` | Local HTTP proxy that strips assistant prefill messages before forwarding to the LLM (OpenCode only) |
 | `docker-compose.yml` | Base service definition (volumes, healthcheck, resource limits) |
-| `codebox.sh` | Host CLI wrapper for docker compose operations; refuses everything except `logs`/`shell`/`status`/`urls`/`version` when run inside a container |
+| `codebox.sh` | Host CLI wrapper for docker compose operations; refuses everything except `logs`/`shell`/`status`/`urls`/`version` when run inside a container; automatically manages the macOS RBI bridge lifecycle when `CODEBOX_RBI_BRIDGE_ENABLE=true` |
 | `tmux/tmux.conf` | tmux keybindings and status bar config (tmux mode only) |
 | `tmux/tmux-theme-dark.conf` / `tmux/tmux-theme-light.conf` | Dark/light theme overrides for tmux status bar |
 | `tmux/tmux-theme-toggle.sh` | Runtime dark/light theme toggle (bound to `Option-t`) |
@@ -70,16 +77,17 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 2. **Agent selection** — inlined: `CODEBOX_APP` (default: `opencode`; also `claude-code`, `pi`) sets `APP_TITLE_PREFIX` and drives all downstream branches.
 3. **CA cert path** — inlined: runs `docker inspect` to resolve `CA_CERT_PATH` to the real host path so MCP sibling containers can mount it.
 3b. **Docker guard** — `lib/docker-guard.sh:_install_docker_guard`: prepends `lib/guard-bin/` to `PATH` so `docker` resolves to the guard shim, exports `CODEBOX_COMPOSE_PROJECT`, and writes `/run/codebox-container`. Runs before any user-reachable shell exists; read-only docker calls in later phases pass through untouched.
-4. **Cleanup trap** — `lib/proxy.sh` sourced here for `_cleanup`; SIGTERM/SIGINT kill the background proxy process.
-5. **Config generation** — `lib/config.sh`: dispatches to `_configure_opencode`, `_generate_claude_code_config`, or `_configure_pi` based on `CODEBOX_APP`. All three gate MCP servers on `CODEBOX_MCP_<NAME>` from one shared server list (`_MCP_ALL_SERVERS`); claude-code and pi share the assembler `_generate_mcp_server_config`. `_configure_pi` additionally seeds default subagent definitions/prompts and resolves `lib/pi-ext/*.ts` into settings.json's `extensions` array (`_pi_extensions`) — Pi's equivalent of the other two agents' MCP, safety, and delegation configuration.
-6. **Corporate CA cert** — `lib/ca-cert.sh`: installs CA bundle into the system trust store (no-op if `CA_CERT_PATH` is unset).
-7. **TLS cert for ttyd** — `lib/tls.sh`: generates a self-signed cert for the ttyd web terminal (tui/tmux modes only).
-8. **OpenCode plugins** — `lib/plugins.sh`: skips `npm install` when the baked `.deps-fingerprint` still matches `package.json`; re-runs only if the fingerprint is stale or `node_modules` was wiped (OpenCode only).
-9. **System checks** — `lib/system-checks.sh`: Docker socket check, `git safe.directory`, workspace symlink, git credential validation.
-9b. **Playwright browsers** — `lib/playwright.sh:_install_playwright`: if `CODEBOX_PLAYWRIGHT` is `true` or `shell`, runs `playwright install` into the per-service volume at `/root/.cache/ms-playwright`. No-ops in ~0.4s once populated; backgrounds the first-run download so the healthcheck's 15s `start_period` isn't at risk.
-10. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `OPENCODE_PREFILL_PROXY=true` only; **default off** since the gateway now accepts assistant prefill — see `proxy/README.md`).
-11. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, sets theme and browser tab title. Does **not** prime the model cache — OpenCode refreshes that itself on boot and hourly.
-12. **Mode launch** — `lib/modes.sh`: enters the `web`/`tui`/`tmux` restart loop for the chosen `CODEBOX_MODE`. **Does not return.**
+4. **Cleanup trap** — `lib/proxy.sh` sourced here for `_cleanup`; SIGTERM/SIGINT kill both background proxy processes (gateway-auth + prefill).
+5. **Corporate CA cert** — `lib/ca-cert.sh`: installs CA bundle into the system trust store (no-op if `CA_CERT_PATH` is unset). It runs before the gateway-auth proxy so Node can trust a corporate TLS interception certificate at proxy startup.
+6. **Gateway-auth proxy** — `lib/proxy.sh:_start_gateway_auth_proxy`: (opt-in via `CODEBOX_GATEWAY_AUTH_PROXY=true`) starts the rotating token proxy on `127.0.0.1:18081` before config generation. This lets `/v1/models` discovery authenticate through the token helper rather than the static key. See `docs/gateway-auth-proxy.md`.
+7. **Config generation** — `lib/config.sh`: dispatches to `_configure_opencode`, `_generate_claude_code_config`, or `_configure_pi` based on `CODEBOX_APP`. When gateway auth is enabled, agent configs point at its live URL, deterministically computed from `CODEBOX_GATEWAY_AUTH_PORT`. All three gate MCP servers on `CODEBOX_MCP_<NAME>` from one shared server list (`_MCP_ALL_SERVERS`); claude-code and pi share the assembler `_generate_mcp_server_config`. `_configure_pi` additionally seeds default subagent definitions/prompts and resolves `lib/pi-ext/*.ts` into settings.json's `extensions` array (`_pi_extensions`) — Pi's equivalent of the other two agents' MCP, safety, and delegation configuration.
+8. **TLS cert for ttyd** — `lib/tls.sh`: generates a self-signed cert for the ttyd web terminal (tui/tmux modes only).
+9. **OpenCode plugins** — `lib/plugins.sh`: skips `npm install` when the baked `.deps-fingerprint` still matches `package.json`; re-runs only if the fingerprint is stale or `node_modules` was wiped (OpenCode only).
+10. **System checks** — `lib/system-checks.sh`: Docker socket check, `git safe.directory`, workspace symlink, git credential validation.
+10b. **Playwright browsers** — `lib/playwright.sh:_install_playwright`: if `CODEBOX_PLAYWRIGHT` is `true` or `shell`, runs `playwright install` into the per-service volume at `/root/.cache/ms-playwright`. No-ops in ~0.4s once populated; backgrounds the first-run download so the healthcheck's 15s `start_period` isn't at risk.
+11. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `OPENCODE_PREFILL_PROXY=true` only; **default off** since the gateway now accepts assistant prefill — see `proxy/README.md`). Forwards to gateway-auth proxy if both are enabled.
+12. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, sets theme and browser tab title. Does **not** prime the model cache — OpenCode refreshes that itself on boot and hourly.
+13. **Mode launch** — `lib/modes.sh`: enters the `web`/`tui`/`tmux` restart loop for the chosen `CODEBOX_MODE`. **Does not return.**
 
 ## Dev Workflow
 

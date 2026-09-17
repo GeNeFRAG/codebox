@@ -95,6 +95,54 @@ _clone_atl() {
     fi
 }
 
+# ─── RBI Bridge (macOS only) ────────────────────────────────
+# On macOS with Docker Desktop, automatically start a bridge to the
+# host-installed rbi-sl-token helper so the container can get tokens
+# without running a Linux binary.
+_manage_rbi_bridge() {
+    local action="${1}"
+
+    # Load .env to get CODEBOX_RBI_BRIDGE_ENABLE
+    if [ -f "${SCRIPT_DIR}/.env" ]; then
+        set -a  # auto-export
+        # shellcheck disable=SC1091
+        . "${SCRIPT_DIR}/.env"
+        set +a
+    fi
+
+    if [ "${CODEBOX_RBI_BRIDGE_ENABLE:-false}" != "true" ]; then
+        return 0
+    fi
+
+    case "${action}" in
+        start)
+            # Pre-flight check: ensure bridge script exists
+            if [ ! -x "${SCRIPT_DIR}/bin/rbi-bridge" ]; then
+                echo -e "${RED}✗ Error: ${SCRIPT_DIR}/bin/rbi-bridge not found or not executable${NC}" >&2
+                echo -e "${YELLOW}  Container will fall back to LLM_API_KEY${NC}"
+                return 1
+            fi
+
+            echo -e "${CYAN}Starting RBI bridge...${NC}"
+            if "${SCRIPT_DIR}/bin/rbi-bridge" start "${CODEBOX_RBI_BRIDGE_PORT:-8092}"; then
+                echo -e "${GREEN}✓ RBI bridge running${NC}"
+                return 0
+            else
+                echo -e "${YELLOW}  Warning: RBI bridge failed to start${NC}"
+                echo -e "${YELLOW}  Container will fall back to LLM_API_KEY${NC}"
+                return 1
+            fi
+            ;;
+        stop)
+            echo -e "${CYAN}Stopping RBI bridge...${NC}"
+            "${SCRIPT_DIR}/bin/rbi-bridge" stop || true
+            ;;
+        status)
+            "${SCRIPT_DIR}/bin/rbi-bridge" status
+            ;;
+    esac
+}
+
 # ─── Pre-flight: ensure host-side mount targets exist ─────────────
 # Docker bind-mounts to files that don't exist will silently create
 # empty *directories*, which confuses later reads. Worse, mounting
@@ -173,6 +221,7 @@ case "${1:-help}" in
     start)
         shift
         _preflight
+        _manage_rbi_bridge start
         echo -e "${GREEN}Starting CodeBox...${NC}"
         $COMPOSE up -d --build "$@"
         echo ""
@@ -183,11 +232,13 @@ case "${1:-help}" in
         shift
         echo -e "${YELLOW}Stopping...${NC}"
         $COMPOSE stop "$@"
+        _manage_rbi_bridge stop
         echo -e "${GREEN}✓ Stopped${NC}"
         ;;
     restart)
         shift
         _preflight
+        _manage_rbi_bridge start
         echo -e "${YELLOW}Restarting (recreating containers to pick up .env changes)...${NC}"
         $COMPOSE up -d --force-recreate "$@"
         echo ""
@@ -259,6 +310,7 @@ case "${1:-help}" in
     down)
         echo -e "${YELLOW}Stopping and removing all...${NC}"
         $COMPOSE down
+        _manage_rbi_bridge stop
         echo -e "${GREEN}✓ Done${NC}"
         ;;
     *)
