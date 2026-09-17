@@ -4,6 +4,28 @@
 
 _backoff_sleep() { echo $(( 3 * (1 << (${1:-0} > 5 ? 5 : ${1:-0})) )); }
 
+# ttyd reconnects by default. Its documented opt-out is `disableReconnect`.
+# Keep the public enable flag and ttyd's option in one normalized state so the
+# generated client index and its server invocation cannot disagree.
+_configure_ttyd_reconnect() {
+    local value="${CODEBOX_WS_RECONNECT:-true}"
+    _TTYD_RECONNECT_ARGS=()
+
+    case "${value,,}" in
+        true|1|yes|on)
+            export _TTYD_AUTO_RECONNECT=true
+            ;;
+        false|0|no|off)
+            export _TTYD_AUTO_RECONNECT=false
+            _TTYD_RECONNECT_ARGS=(-t disableReconnect=true)
+            ;;
+        *)
+            echo "  ! Invalid CODEBOX_WS_RECONNECT=${value@Q}; defaulting to true"
+            export _TTYD_AUTO_RECONNECT=true
+            ;;
+    esac
+}
+
 # Extract ttyd's built-in HTML and inject a CSS override to remove the 5px
 # terminal padding so the terminal fills the full browser viewport.
 _TTYD_INDEX="/tmp/ttyd-index.html"
@@ -38,9 +60,40 @@ _generate_ttyd_index() {
     #    when `extended-keys on` is set (see tmux/tmux.conf).
     #    Alt-Enter is left alone — xterm.js already sends ESC CR.
     #
-    # ttyd owns WebSocket reconnect handling. _serve_ttyd_loop passes its
-    # supported `reconnect` client option instead of relying on its private
-    # JavaScript implementation details.
+    # ttyd reconnects by default, but its 1.7.7 client clears that state on a
+    # WebSocket `error` immediately before the matching abnormal `close`. That
+    # makes network interruptions fall through to its manual Enter prompt. The
+    # preamble below suppresses only that internal error listener; the close
+    # handler can then perform ttyd's normal automatic reconnect.
+    if [ "${_TTYD_AUTO_RECONNECT:-true}" = "true" ]; then
+        python3 - "${_TTYD_INDEX}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+html = path.read_text()
+needle = '<script type="text/javascript">'
+preamble = '''<script>
+// ttyd 1.7.7 sets its private doReconnect=false on every WebSocket error.
+// Browser network failures emit error before close, defeating ttyd's otherwise
+// built-in reconnect path. Ignore just that listener so abnormal closes retry.
+(function () {
+  const addEventListener = WebSocket.prototype.addEventListener;
+  WebSocket.prototype.addEventListener = function (type, listener, options) {
+    if (type === "error") return;
+    return addEventListener.call(this, type, listener, options);
+  };
+  queueMicrotask(function () {
+    WebSocket.prototype.addEventListener = addEventListener;
+  });
+})();
+</script>'''
+if needle not in html:
+    raise SystemExit('ttyd client script not found; reconnect patch not applied')
+path.write_text(html.replace(needle, preamble + needle, 1))
+PY
+    fi
+
     cat >> "${_TTYD_INDEX}" <<'PATCH'
 <style>body,#terminal-container{background:#000!important}#terminal-container .terminal{padding:0!important;height:100%!important}</style>
 <script>
@@ -87,11 +140,6 @@ _serve_ttyd_loop() {
     if [ "$(cat /tmp/.tmux-theme 2>/dev/null)" = "light" ]; then
         _theme_bg="#d5d6db"
     fi
-    # ttyd performs the client reconnect. Its default is disabled, which
-    # leaves a disconnected terminal waiting for the user to press Enter.
-    # Keep the value as a ttyd boolean string rather than evaluating it in
-    # shell; ttyd validates and applies it to its browser client.
-    local _ws_reconnect="${CODEBOX_WS_RECONNECT:-true}"
     # WebSocket ping interval (default: 10s, configurable via CODEBOX_PING_INTERVAL).
     local _ping_interval="${CODEBOX_PING_INTERVAL:-10}"
     local _fail_count=0
@@ -106,7 +154,7 @@ _serve_ttyd_loop() {
             --interface 0.0.0.0 \
             --writable \
             --ping-interval "${_ping_interval}" \
-            -t reconnect="${_ws_reconnect}" \
+            "${_TTYD_RECONNECT_ARGS[@]}" \
             ${_index_flag} \
             ${_TTYD_SSL_FLAGS:-} \
             -t titleFixed="${CODEBOX_TITLE:-${APP_TITLE_PREFIX} (${mode_label})}" \
@@ -133,6 +181,10 @@ TMUX_SESSION="codebox"
 cd /workspace
 
 if [ "${CODEBOX_MODE}" = "tmux" ]; then
+    # Configure reconnect before generating the index: the auto-reconnect
+    # patch must be present before ttyd's bundled client initializes.
+    _configure_ttyd_reconnect
+
     # Generate fullscreen ttyd index for tmux mode
     _generate_ttyd_index
     # ── tmux mode: run app inside tmux, served by ttyd ───────────

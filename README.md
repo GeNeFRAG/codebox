@@ -173,7 +173,7 @@ If `/root/.config/opencode/tmux.conf` exists, it replaces the built-in config at
 
 > **Note:** This feature applies to `tmux` mode only. OpenCode's `web` mode uses a different connection model and doesn't support automatic reconnection.
 
-CodeBox configures ttyd to keep the browser terminal connected and to use ttyd's built-in automatic reconnect when a WebSocket is lost (for example after a network interruption, corporate proxy timeout, or laptop sleep). ttyd shows its own connection/reconnect overlay while it restores the connection.
+CodeBox configures ttyd to keep the browser terminal connected and to reconnect automatically when a WebSocket is lost (for example after a network interruption, corporate proxy timeout, or laptop sleep). ttyd shows its own connection/reconnect overlay while it restores the connection.
 
 The underlying tmux session is unaffected — your work continues in the background. After reconnecting, the browser reattaches to the same session exactly where you left off.
 
@@ -191,7 +191,7 @@ CODEBOX_WS_RECONNECT=true
 
 The ping interval (`CODEBOX_PING_INTERVAL`) is a server-side setting passed to ttyd's `--ping-interval`. Lower values (5-10s) prevent idle timeout on aggressive proxies but generate more keepalive traffic. Higher values (30-60s) reduce overhead but may allow proxies to kill the connection during long pauses.
 
-Reconnection (`CODEBOX_WS_RECONNECT`) is passed to ttyd as its supported browser client `reconnect` setting. When enabled (the default), ttyd reconnects the WebSocket and reattaches to the persistent tmux session. When disabled, ttyd retains its manual **Press Enter to Reconnect** prompt.
+Reconnection (`CODEBOX_WS_RECONNECT`) defaults to enabled. CodeBox keeps ttyd's automatic-reconnect behavior active and works around ttyd 1.7.7 treating a browser WebSocket `error` as a manual disconnect. When disabled, CodeBox passes ttyd's `disableReconnect` option, retaining its manual **Press Enter to Reconnect** prompt.
 
 ## Claude Code Mode
 
