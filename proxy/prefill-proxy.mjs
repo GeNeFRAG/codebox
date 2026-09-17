@@ -21,8 +21,8 @@ import crypto from "node:crypto";
 
 const UPSTREAM_URL = process.env.UPSTREAM_URL;
 const PROXY_PORT = parseInt(process.env.PROXY_PORT || "18080", 10);
-const PROXY_TIMEOUT = parseInt(process.env.PROXY_TIMEOUT || "120", 10) * 1000; // seconds → ms
-const LOG_LEVEL = (process.env.PROXY_LOG_LEVEL || "info").toLowerCase(); // debug | info | warn | error
+const PROXY_TIMEOUT = parseInt(process.env.OPENCODE_PROXY_TIMEOUT || "120", 10) * 1000; // seconds → ms
+const LOG_LEVEL = (process.env.OPENCODE_PROXY_LOG_LEVEL || "info").toLowerCase(); // debug | info | warn | error
 
 if (!UPSTREAM_URL) {
   console.error("[prefill-proxy] UPSTREAM_URL is required");
@@ -346,8 +346,8 @@ server.headersTimeout = 65_000;   // must be > keepAliveTimeout
 
 server.listen(PROXY_PORT, "127.0.0.1", () => {
   log.info(`Listening on http://127.0.0.1:${PROXY_PORT} -> ${UPSTREAM_URL}`);
-  log.info(`Log level: ${LOG_LEVEL} (set PROXY_LOG_LEVEL=debug for verbose output)`);
-  log.info(`Upstream timeout: ${PROXY_TIMEOUT / 1000}s (set PROXY_TIMEOUT=<seconds> to change)`);
+  log.info(`Log level: ${LOG_LEVEL} (set OPENCODE_PROXY_LOG_LEVEL=debug for verbose output)`);
+  log.info(`Upstream timeout: ${PROXY_TIMEOUT / 1000}s (set OPENCODE_PROXY_TIMEOUT=<seconds> to change)`);
   log.info(`Keep-alive: upstream pool maxSockets=16 maxFreeSockets=8`);
 });
 

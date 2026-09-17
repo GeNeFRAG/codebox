@@ -449,9 +449,9 @@ services:
 | `PI_OFFLINE` | Disables Pi's startup update-check and telemetry network calls (default: `1`). Set to `0` to let Pi phone home. Pi only |
 | `REPOS_PATH` | Host path to repos (default: `~/repos`) |
 | `CA_CERT_PATH` | CA certificate bundle path on host |
-| `PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `false`). OpenCode only. Set `true` only for gateways that reject a trailing assistant message — see `proxy/README.md`. |
-| `PROXY_TIMEOUT` | Upstream timeout in seconds for the prefill proxy (default: `120`). OpenCode only |
-| `PROXY_LOG_LEVEL` | Prefill proxy verbosity: `debug` / `info` (default) / `warn` / `error`. OpenCode only |
+| `OPENCODE_PREFILL_PROXY` | Enable the prefill-stripping proxy (default: `false`). OpenCode only. Set `true` only for gateways that reject a trailing assistant message — see `proxy/README.md`. |
+| `OPENCODE_PROXY_TIMEOUT` | Upstream timeout in seconds for the prefill proxy (default: `120`). OpenCode only |
+| `OPENCODE_PROXY_LOG_LEVEL` | Prefill proxy verbosity: `debug` / `info` (default) / `warn` / `error`. OpenCode only |
 | `DOCKER_NETWORK_MODE` | Set to `host` on Linux to bypass Docker bridge NAT (~70-80ms savings). Not supported on Docker Desktop. |
 | `GIT_CREDENTIALS_PATH` | Host path to `.git-credentials` for HTTPS push (default: disabled) |
 | `GIT_CONFIG_WORK_PATH` | Host path to a secondary `.gitconfig-work` for work git identity — see [Git Multi-Account](#git-multi-account) (default: disabled) |
@@ -680,7 +680,7 @@ Also rename:
 | Problem | Fix |
 |---------|-----|
 | Container won't start | `./codebox.sh logs <service>` — check for errors |
-| LLM API errors | Verify `LLM_BASE_URL` / `LLM_API_KEY` in `.env`. Check for `✓ Prefill proxy running` in logs. Set `PROXY_LOG_LEVEL=debug` for details. |
+| LLM API errors | Verify `LLM_BASE_URL` / `LLM_API_KEY` in `.env`. Check for `✓ Prefill proxy running` in logs. Set `OPENCODE_PROXY_LOG_LEVEL=debug` for details. |
 | "Model does not support assistant prefill" | Prefill proxy handles this — look for `✗ Prefill proxy failed to start` in logs |
 | MCP Docker servers not working | Check for `✓ Docker socket available` in logs. Pull image manually if needed. |
 | Port conflict | Change port in override: `ports: ["3001:3001"]` + `CODEBOX_PORT=3001` |
@@ -722,7 +722,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 5. **CA certificate install** (`lib/ca-cert.sh`) — If `/certs/ca-bundle.pem` is mounted and non-empty, installs into system store + sets `NODE_EXTRA_CA_CERTS`.
 6. **Plugin install** (`lib/plugins.sh`) — Runs `npm install` in config dir if `package.json` exists (OpenCode only).
 7. **System checks** (`lib/system-checks.sh`) — Verifies Docker socket for MCP containers; marks `/workspace` as git safe.directory; validates `.git-credentials` and `.gitconfig-work` mounts; symlinks `/workspace` into `$HOME`.
-8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` only if `PREFILL_PROXY=true` (OpenCode only; off by default).
+8. **Prefill proxy** (`lib/proxy.sh`) — Launches `proxy/prefill-proxy.mjs` on `127.0.0.1:18080` only if `OPENCODE_PREFILL_PROXY=true` (OpenCode only; off by default).
 9. **Binary resolution, banner, theme** (`lib/runtime.sh`) — Resolves the agent binary (`APP_BIN`), prints the startup banner and initialises the UI theme flag.
 10. **Mode launch** (`lib/modes.sh`) — Reads `CODEBOX_MODE` (default `web`):
     - `web` — starts the agent in a restart loop on `0.0.0.0:${CODEBOX_PORT:-3000}` (OpenCode only; not supported for Claude Code or Pi)

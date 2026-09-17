@@ -77,7 +77,7 @@ This repo is **CodeBox** — a Docker wrapper for [OpenCode](https://github.com/
 8. **OpenCode plugins** — `lib/plugins.sh`: skips `npm install` when the baked `.deps-fingerprint` still matches `package.json`; re-runs only if the fingerprint is stale or `node_modules` was wiped (OpenCode only).
 9. **System checks** — `lib/system-checks.sh`: Docker socket check, `git safe.directory`, workspace symlink, git credential validation.
 9b. **Playwright browsers** — `lib/playwright.sh:_install_playwright`: if `CODEBOX_PLAYWRIGHT` is `true` or `shell`, runs `playwright install` into the per-service volume at `/root/.cache/ms-playwright`. No-ops in ~0.4s once populated; backgrounds the first-run download so the healthcheck's 15s `start_period` isn't at risk.
-10. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `PREFILL_PROXY=true` only; **default off** since the gateway now accepts assistant prefill — see `proxy/README.md`).
+10. **Prefill proxy** — `lib/proxy.sh:_start_proxy`: starts the Node.js proxy on `127.0.0.1:18080` (OpenCode + `OPENCODE_PREFILL_PROXY=true` only; **default off** since the gateway now accepts assistant prefill — see `proxy/README.md`).
 11. **Runtime** — `lib/runtime.sh`: resolves `APP_BIN`, prints the startup banner, sets theme and browser tab title. Does **not** prime the model cache — OpenCode refreshes that itself on boot and hourly.
 12. **Mode launch** — `lib/modes.sh`: enters the `web`/`tui`/`tmux` restart loop for the chosen `CODEBOX_MODE`. **Does not return.**
 
