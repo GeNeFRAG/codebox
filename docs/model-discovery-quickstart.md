@@ -57,8 +57,8 @@ docker exec -it codebox jq '.providers.llm.models[].id' \
 
 ### Scenario 1: Gateway Has Fewer Models Than Catalog
 
-**Catalog**: 22 models  
-**Gateway**: 18 models  
+**Catalog**: 22 models
+**Gateway**: 18 models
 **Result**: Agents see 18 models (the intersection)
 
 ```
@@ -88,7 +88,7 @@ Startup log:
   ⚠ Gateway discovery failed, using full catalog (22 models)
 ```
 
-**With default settings**: Container starts, falls back to full catalog  
+**With default settings**: Container starts, falls back to full catalog
 **With REQUIRE_GATEWAY=true**: Container refuses to start
 
 ### Scenario 4: New Model Added to Gateway
@@ -202,23 +202,23 @@ unset LLM_BASE_URL
 
 ## FAQ
 
-**Q: Does this work with all agents?**  
+**Q: Does this work with all agents?**
 A: OpenCode and Pi use discovery. Claude Code discovers models itself at runtime.
 
-**Q: What if I have multiple gateways?**  
+**Q: What if I have multiple gateways?**
 A: Not supported. Use one gateway per container. Run multiple containers for multiple gateways.
 
-**Q: Can I force a specific model list?**  
+**Q: Can I force a specific model list?**
 A: Not directly. Edit `templates/model-catalog.json` to define what's available.
 
-**Q: Does discovery slow down startup?**  
+**Q: Does discovery slow down startup?**
 A: First start: ~100-500ms. Subsequent: <1ms (cached).
 
-**Q: What happens to Pi subagents?**  
+**Q: What happens to Pi subagents?**
 A: They inherit the filtered catalog and validate their pinned models against it.
 
-**Q: Can I see what was discovered?**  
+**Q: Can I see what was discovered?**
 A: Yes, check cache: `docker exec -it codebox cat /tmp/codebox-gateway-models-*.json`
 
-**Q: How do I add a new model?**  
+**Q: How do I add a new model?**
 A: Add to `templates/model-catalog.json`, then clear cache and restart.
