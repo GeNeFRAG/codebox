@@ -649,17 +649,42 @@ _generate_claude_code_config() {
     #   - customApiKeyResponses.approved (last 20 chars of key) → skips API key approval prompt
     #   - projects["/workspace"].hasTrustDialogAccepted → skips workspace trust dialog
     # Without these, the TUI blocks on interactive prompts.
-    local config_json="${settings_dir}/.config.json"
-    local _key_json="null"
+
+    # Claude Code matches on key.trim().slice(-20). Bash returns "" — not the whole
+    # string — for ${v: -20} when ${#v} < 20, so short keys must be guarded or the
+    # seeded entry never matches and the approval prompt returns on every boot.
+    local _kt=""
     if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-        _key_json=$(jq -n --arg kt "${ANTHROPIC_API_KEY: -20}" '{approved: [$kt], rejected: []}')
+        _kt="${ANTHROPIC_API_KEY}"
+        _kt="${_kt#"${_kt%%[![:space:]]*}"}"        # ltrim
+        _kt="${_kt%"${_kt##*[![:space:]]}"}"        # rtrim
+        if [ "${#_kt}" -gt 20 ]; then _kt="${_kt: -20}"; fi
     fi
-    jq -n --argjson keys "${_key_json}" '{
-        hasCompletedOnboarding: true,
-        projects: {"/workspace": {hasTrustDialogAccepted: true, allowedTools: []}}
-    } + (if $keys != null then {customApiKeyResponses: $keys} else {} end)' > "${config_json}"
+
+    # Merge, don't clobber: Claude Code keeps its own state here (numStartups,
+    # userID, per-project prompt history, trust for dirs other than /workspace).
+    local config_json="${settings_dir}/.config.json"
+    local _existing='{}'
+    if [ -s "${config_json}" ]; then
+        _existing=$(jq '.' "${config_json}" 2>/dev/null || echo '{}')
+    fi
+    printf '%s' "${_existing}" | jq --arg kt "${_kt}" '
+        .hasCompletedOnboarding = true
+      | .projects["/workspace"].hasTrustDialogAccepted = true
+      | .projects["/workspace"].allowedTools = (.projects["/workspace"].allowedTools // [])
+      | if $kt == "" then .
+        else
+            .customApiKeyResponses.approved =
+                (((.customApiKeyResponses.approved // []) + [$kt])
+                 | map(select(. != "")) | unique)
+            # un-reject: a "rejected" verdict withholds the key silently, which is
+            # worse than prompting — Claude Code then falls through to OAuth
+          | .customApiKeyResponses.rejected =
+                ((.customApiKeyResponses.rejected // []) | map(select(. != $kt)))
+        end
+    ' > "${config_json}.tmp" && mv "${config_json}.tmp" "${config_json}"
     chmod 600 "${config_json}"
-    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    if [ -n "${_kt}" ]; then
         echo "  ✓ Claude Code onboarding pre-seeded (API key approved, /workspace trusted)"
     else
         echo "  ✓ Claude Code onboarding pre-seeded (/workspace trusted, no API key)"

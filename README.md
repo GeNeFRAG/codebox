@@ -744,7 +744,7 @@ When a container starts, `entrypoint.sh` sources a set of modular scripts from `
 - **Settings** — Writes `/root/.claude/settings.json` with pre-approved tool permissions (`Bash(*)`, `Read(*)`, `Write(*)`, `Edit(*)`, `mcp__*`). If `CLAUDE_CODE_PERMISSION_MODE` is set, also writes `permissions.defaultMode` to pin the startup mode
 - **Auth mapping** — Maps `LLM_API_KEY` → `ANTHROPIC_API_KEY` and `LLM_BASE_URL` → `ANTHROPIC_BASE_URL` at startup
 - **Model mapping** — Exports `CLAUDE_CODE_MODEL` → `CLAUDE_MODEL` (Claude Code's env var for default model selection)
-- **Onboarding pre-seed** — Writes `/root/.claude/.config.json` to skip the setup wizard, API key approval prompt, and workspace trust dialog
+- **Onboarding pre-seed** — Merges into `/root/.claude/.config.json` to skip the setup wizard, API key approval prompt, and workspace trust dialog. Merged, not overwritten, so Claude Code's own state (`numStartups`, `userID`, per-project prompt history, trust for dirs other than `/workspace`) survives a restart. The approval entry is the last 20 characters of the trimmed key — matching Claude Code's `key.trim().slice(-20)`, including the short-key case where bash's `${v: -20}` would yield an empty string
 
 **Pi-specific steps (in `lib/config.sh:_configure_pi`):**
 
