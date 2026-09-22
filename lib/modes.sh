@@ -60,11 +60,12 @@ _generate_ttyd_index() {
     #    when `extended-keys on` is set (see tmux/tmux.conf).
     #    Alt-Enter is left alone — xterm.js already sends ESC CR.
     #
-    # ttyd reconnects by default, but its 1.7.7 client clears that state on a
-    # WebSocket `error` immediately before the matching abnormal `close`. That
-    # makes network interruptions fall through to its manual Enter prompt. The
-    # preamble below suppresses only that internal error listener; the close
-    # handler can then perform ttyd's normal automatic reconnect.
+    # ttyd 1.7.7 clears doReconnect on a WebSocket `error` immediately before
+    # the matching abnormal `close`. The close handler consequently displays
+    # its manual Enter prompt instead of retrying. Patch that bundled handler
+    # directly rather than monkey-patching WebSocket.addEventListener: ttyd may
+    # register it after an asynchronous token refresh, long after a temporary
+    # addEventListener override has been restored.
     if [ "${_TTYD_AUTO_RECONNECT:-true}" = "true" ]; then
         python3 - "${_TTYD_INDEX}" <<'PY'
 from pathlib import Path
@@ -72,25 +73,14 @@ import sys
 
 path = Path(sys.argv[1])
 html = path.read_text()
-needle = '<script type="text/javascript">'
-preamble = '''<script>
-// ttyd 1.7.7 sets its private doReconnect=false on every WebSocket error.
-// Browser network failures emit error before close, defeating ttyd's otherwise
-// built-in reconnect path. Ignore just that listener so abnormal closes retry.
-(function () {
-  const addEventListener = WebSocket.prototype.addEventListener;
-  WebSocket.prototype.addEventListener = function (type, listener, options) {
-    if (type === "error") return;
-    return addEventListener.call(this, type, listener, options);
-  };
-  queueMicrotask(function () {
-    WebSocket.prototype.addEventListener = addEventListener;
-  });
-})();
-</script>'''
-if needle not in html:
-    raise SystemExit('ttyd client script not found; reconnect patch not applied')
-path.write_text(html.replace(needle, preamble + needle, 1))
+old = 'g(e,"error",(()=>this.doReconnect=!1))'
+new = 'g(e,"error",(()=>this.doReconnect=!0))'
+count = html.count(old)
+if count != 1:
+    raise SystemExit(
+        f'expected one ttyd WebSocket error handler, found {count}; reconnect patch not applied'
+    )
+path.write_text(html.replace(old, new, 1))
 PY
     fi
 
