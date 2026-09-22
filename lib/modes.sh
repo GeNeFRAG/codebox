@@ -74,7 +74,7 @@ import sys
 path = Path(sys.argv[1])
 html = path.read_text()
 old = 'g(e,"error",(()=>this.doReconnect=!1))'
-new = 'g(e,"error",(()=>this.doReconnect=!0))'
+new = 'g(e,"error",(()=>{console.info("[CodeBox] WebSocket error; reconnecting automatically");this.doReconnect=!0}))'
 count = html.count(old)
 if count != 1:
     raise SystemExit(
