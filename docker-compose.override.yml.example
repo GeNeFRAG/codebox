@@ -86,6 +86,7 @@ services:
       # One line per skill — NOT `./skills:/root/.agents/skills`, which
       # would shadow the image's agent-browser and simplify.
       - ./skills/atl:/root/.agents/skills/atl:ro
+      - ./skills/websearch:/root/.agents/skills/websearch:ro
       - ./tmux/tmux.conf:/root/.tmux.conf:ro
       - ./tmux:/opt/opencode/tmux:ro
 
@@ -135,6 +136,7 @@ services:
   #     - ./proxy:/opt/opencode/proxy:ro
   #     # One per skill — a whole-dir mount shadows agent-browser/simplify.
   #     - ./skills/atl:/root/.agents/skills/atl:ro
+  #     - ./skills/websearch:/root/.agents/skills/websearch:ro
   #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
   #     - ./tmux:/opt/opencode/tmux:ro
 
@@ -195,6 +197,7 @@ services:
   #     - ./proxy:/opt/opencode/proxy:ro
   #     # One per skill — a whole-dir mount shadows agent-browser/simplify.
   #     - ./skills/atl:/root/.agents/skills/atl:ro
+  #     - ./skills/websearch:/root/.agents/skills/websearch:ro
   #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
   #     - ./tmux:/opt/opencode/tmux:ro
 
@@ -249,6 +252,7 @@ services:
   #     - ./proxy:/opt/opencode/proxy:ro
   #     # One per skill — a whole-dir mount shadows agent-browser/simplify.
   #     - ./skills/atl:/root/.agents/skills/atl:ro
+  #     - ./skills/websearch:/root/.agents/skills/websearch:ro
   #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
   #     - ./tmux:/opt/opencode/tmux:ro
 
@@ -259,8 +263,8 @@ services:
   # Auth: LLM_BASE_URL + LLM_API_KEY in .env is the primary path
   #   (lib/config.sh writes them into models.json); a standard provider
   #   key such as ANTHROPIC_API_KEY is the fallback.
-  # Pi has no MCP support by design — no CODEBOX_MCP_* vars apply here,
-  # which is also why no memory volume is mounted below.
+  # Pi has no built-in MCP client; CodeBox's MCP extension supplies the
+  # shared CODEBOX_MCP_* server fleet. No OpenCode memory volume is needed.
   #
   # ⚠ After upgrading pi version and rebuilding, run:
   #   docker volume rm pi-data-my-project
@@ -305,6 +309,7 @@ services:
   #     - ./proxy:/opt/opencode/proxy:ro
   #     # One per skill — a whole-dir mount shadows agent-browser/simplify.
   #     - ./skills/atl:/root/.agents/skills/atl:ro
+  #     - ./skills/websearch:/root/.agents/skills/websearch:ro
   #     - ./tmux/tmux.conf:/root/.tmux.conf:ro
   #     - ./tmux:/opt/opencode/tmux:ro
 

@@ -335,11 +335,12 @@ The copies are never overwritten, so customize the model, tools, or instructions
 
 `lib/pi-ext/codebox-guard.ts` supplies the permission gate Pi omits: it refuses `write`/`edit` (and the file-clobbering shapes of `bash`) against `.env` and other credential/generated-config paths, and blocks `docker` commands that would destroy this container by asking `lib/guard-bin/docker` for its verdict in dry-run mode. Disable with `CODEBOX_PI_GUARD=false`; add paths with `CODEBOX_PI_GUARD_PATHS`. All CodeBox Pi extensions are covered by `scripts/verify-pi-extensions.sh`.
 
-Pi's substitute for MCP is a CLI plus a **skill** that tells the model the CLI exists. Skills in `skills/` are `COPY`d to `/root/.agents/skills/` (Pi's harness-neutral global skill dir) in the Dockerfile's churn zone, alongside `agent-browser` and `simplify` which are installed there via `npx skills add`. Only skill *descriptions* stay in context; the model `read`s the full `SKILL.md` on demand.
+Skills are a low-context complement to MCP: they tell the model how to use a CLI or choose a focused MCP workflow. Skills in `skills/` are `COPY`d to `/root/.agents/skills/` (Pi's harness-neutral global skill dir) in the Dockerfile's churn zone, alongside `agent-browser` and `simplify` which are installed there via `npx skills add`. Only skill *descriptions* stay in context; the model `read`s the full `SKILL.md` on demand.
 
 | Skill | Wraps |
 |-------|-------|
 | `skills/atl/SKILL.md` | `atl` — Jira, Confluence, Zephyr Scale; stands in for the `mcp_atlassian` MCP server under Pi |
+| `skills/websearch/SKILL.md` | Web-search workflow for the `mcp__websearch__*` tools; encourages focused, source-backed searches |
 
 A skill's lifetime should match the binary it documents, which is why these are baked into the image rather than written into the per-service `/root/.pi/agent` volume at startup. Keep them short and point at `--help` rather than restating flags — duplicated command docs go stale. Note `.dockerignore` excludes `*.md`, but only at the context root, so nested `skills/*/SKILL.md` is still sent (verified).
 
@@ -522,7 +523,7 @@ OPENCODE_TUI_THEME=catppuccin
 |--------|---------|-------|
 | `memory` | ✅ | Persistent memory (`memory.json`) |
 | `context7` | ✅ | Context7 knowledge search |
-| `websearch` | ✅ | Web search via Exa (remote) |
+| `websearch` | ✅ | Web search via Bing (local stdio MCP) |
 | `sequential-thinking` | ✅ | Multi-step reasoning |
 | `time` | ✅ | Time/timezone utilities |
 | `github` | ❌ | GitHub Enterprise — runs in Docker, requires `GITHUB_ENTERPRISE_TOKEN` |
