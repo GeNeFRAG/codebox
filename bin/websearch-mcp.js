@@ -41,7 +41,9 @@ function stripHtml(s) {
 }
 
 async function bingSearch(query, limit = 10) {
-  const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&mkt=en-US&setlang=en-US&count=${limit}`;
+  // Always request Bing's strongest SafeSearch setting. This is enforced by
+  // Bing before results reach the MCP server; do not make it user-configurable.
+  const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&mkt=en-US&setlang=en-US&adlt=strict&count=${limit}`;
   const html = await httpsGet(url);
 
   const results = [];

@@ -7,8 +7,10 @@ compatibility: Requires CodeBox's codebox-mcp extension and the websearch MCP se
 # Web search via MCP
 
 Use the `mcp__websearch__*` tools rather than shelling out to search engines.
-They use CodeBox's local Bing-backed `websearch` MCP server and return source
-URLs suitable for citing in the answer.
+They use CodeBox's local Bing-backed `websearch` MCP server, which always
+requests Bing Strict SafeSearch, and return source URLs suitable for citing in
+the answer. Bing's classification is not a guarantee that every result or
+linked page is appropriate for every audience.
 
 ## Choose the smallest tool that answers the request
 

@@ -523,7 +523,7 @@ OPENCODE_TUI_THEME=catppuccin
 |--------|---------|-------|
 | `memory` | ✅ | Persistent memory (`memory.json`) |
 | `context7` | ✅ | Context7 knowledge search |
-| `websearch` | ✅ | Web search via Bing (local stdio MCP) |
+| `websearch` | ✅ | Web search via Bing (local stdio MCP; Strict SafeSearch requested) |
 | `sequential-thinking` | ✅ | Multi-step reasoning |
 | `time` | ✅ | Time/timezone utilities |
 | `github` | ❌ | GitHub Enterprise — runs in Docker, requires `GITHUB_ENTERPRISE_TOKEN` |
@@ -545,7 +545,7 @@ Each MCP server adds 50–150 tool definitions to Claude Code's system prompt. D
 | `CODEBOX_MCP_MEMORY` | `true` | Memory server |
 | `CODEBOX_MCP_CONTEXT7` | `true` | Context7 knowledge search |
 | `CODEBOX_MCP_TIME` | `true` | Time/timezone utilities |
-| `CODEBOX_MCP_WEBSEARCH` | `true` | Web search |
+| `CODEBOX_MCP_WEBSEARCH` | `true` | Web search; Bing Strict SafeSearch is always requested |
 | `CODEBOX_MCP_GITHUB_RBI` | `true` | GitHub Enterprise |
 | `CODEBOX_MCP_GITHUB_PERSONAL` | `true` | GitHub.com |
 | `CODEBOX_MCP_MCP_ATLASSIAN` | `true` | Jira + Confluence |
